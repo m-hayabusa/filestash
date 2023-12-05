@@ -12,6 +12,7 @@
 	"asx": "video/x-ms-asf",
 	"atom": "application/atom+xml",
 	"avi": "video/x-msvideo",
+	"avif": "image/avif",
 	"bin": "application/octet-stream",
 	"bmp": "image/x-ms-bmp",
 	"bz2": "application/x-bz2",

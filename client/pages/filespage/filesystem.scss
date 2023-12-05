@@ -8,6 +8,10 @@
     opacity: 1;
 }
 
+.component_filesystem.view_grid > div > .list{
+    margin: 0 calc(mod(100%, 11em) / 2.0);
+}
+
 .component_filesystem{
     > div{
         height: 100%;

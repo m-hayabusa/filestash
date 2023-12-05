@@ -23,8 +23,9 @@ const HOCDropTargetForFSFile = (Cmp) => {
 
 class FileSystemComponent extends React.PureComponent {
     render() {
+        document.documentElement.style.setProperty("--container-width", this.props.view === "list" ? "800px" : "95vw");
         return this.props.connectDropFile(
-            <div className={"component_filesystem" + (this.props.isSearch ? " is_search" : " is_folder")}>
+            <div className={"component_filesystem" + (this.props.isSearch ? " is_search" : " is_folder") +" view_"+ (this.props.view)}>
                 <Container>
                     <NewThing
                         path={this.props.path} sort={this.props.sort}

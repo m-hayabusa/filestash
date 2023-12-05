@@ -5,8 +5,8 @@
 #include "utils.h"
 
 #define WEBP_QUALITY 75
-#define INITIAL_BUFFER_SIZE 1024*64 // 128kB
-#define MAX_BUFFER_SIZE 1024*1024*2 // 2MB
+#define INITIAL_BUFFER_SIZE 1024*64 // 64kB
+#define MAX_BUFFER_SIZE 1024*1024*10 // 10MB
 
 int webp_to_webp(int inputDesc, int outputDesc, int targetSize) {
 #ifdef HAS_DEBUG

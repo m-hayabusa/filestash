@@ -236,7 +236,7 @@
                 margin-right: 0px;
                 padding: 0px;
             }
-            img.thumbnail{transition: 0.2s ease-out transform;}
+            img.thumbnail{transition: 0.2s ease-out filter;}
         }
         &.not-selected .box{
             &:hover{
@@ -245,10 +245,10 @@
                     transform: translateX(0);
                 }
                 img.thumbnail{
-                    transform: scale(0.6);
+                    filter: blur(5px);
                 }
                 .image_layer{
-                    background: rgba(242, 242, 242, 0.7);
+                    background: rgba(10, 10, 10, 0.5);
                 }
             }
             &.preview{

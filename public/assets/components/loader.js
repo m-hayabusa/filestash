@@ -1,5 +1,6 @@
 import { createElement } from "../lib/skeleton/index.js";
-import rxjs from "../lib/rx.js";
+import rxjs, { effect } from "../lib/rx.js";
+import { animate, opacityIn } from "../lib/animate.js";
 
 class Loader extends window.HTMLElement {
     constructor() {
@@ -44,6 +45,34 @@ class Loader extends window.HTMLElement {
 
 customElements.define("component-loader", Loader);
 
+export function createLoader($parent, opts = {}) {
+    const { wait = 500 } = opts
+    const cancel = effect(new rxjs.Observable((observer) => {
+        const $icon = createElement(`
+            <div class="component_loader">
+                <style>
+                    .component_loader {
+                        display: block;
+                        text-align: center;
+                        margin-top: 25px;
+                    }
+                </style>
+                <component-icon name="loading"></component-icon>
+            </div>
+        `);
+        const id = window.setTimeout(() => {
+            $parent.appendChild($icon);
+            animate($icon, { time: 1000, keyframes: opacityIn() });
+        }, wait);
+        return () => {
+            clearTimeout(id);
+            $icon.remove();
+        };
+    }));
+    return rxjs.tap(() => cancel());
+}
+
+// > after this should be deprecated
 export default createElement("<component-loader></component-loader>");
 export function toggle($node, show = false) {
     if (show === true) return rxjs.tap(() => $node.appendChild(createElement("<component-loader></component-loader>")));

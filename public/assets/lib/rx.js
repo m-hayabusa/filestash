@@ -1,4 +1,5 @@
 import { onDestroy } from "./skeleton/index.js";
+import assert from "./assert.js";
 import * as rxjs from "./vendor/rxjs.min.js";
 
 // https://github.com/ReactiveX/rxjs/issues/4416#issuecomment-620847759
@@ -8,8 +9,9 @@ export default rxjs;
 export const ajax = ajaxModule.ajax;
 
 export function effect(obs) {
-    const tmp = obs.subscribe(() => {}, (err) => { throw err; });
-    onDestroy(() => tmp.unsubscribe());
+    const sub = obs.subscribe(() => {}, (err) => { throw err; });
+    onDestroy(() => sub.unsubscribe());
+    return sub.unsubscribe.bind(sub);
 }
 
 const getFn = (obj, arg0, ...args) => {
@@ -19,21 +21,19 @@ const getFn = (obj, arg0, ...args) => {
 };
 
 export function applyMutation($node, ...keys) {
-    if (!$node) throw new Error("undefined node");
+    assert.type($node, window.HTMLElement);
     const execute = getFn($node, ...keys);
     return rxjs.tap((val) => Array.isArray(val) ? execute(...val) : execute(val));
 }
 
 export function applyMutations($node, ...keys) {
-    if (!$node) throw new Error("undefined node");
+    assert.type($node, window.HTMLElement);
     const execute = getFn($node, ...keys);
-    return rxjs.tap((vals) => vals.forEach((val) => {
-        execute(val);
-    }));
+    return rxjs.tap((vals) => vals.forEach((val) => execute(val)));
 }
 
 export function stateMutation($node, attr) {
-    if (!$node) throw new Error("undefined node");
+    assert.type($node, window.HTMLElement);
     return rxjs.tap((val) => $node[attr] = val);
 }
 
@@ -42,8 +42,19 @@ export function preventDefault() {
 }
 
 export function onClick($node) {
-    if (!$node) return rxjs.EMPTY;
+    assert.type($node, window.HTMLElement);
     return rxjs.fromEvent($node, "click").pipe(
-        rxjs.map(() => $node),
+        rxjs.map(() => $node)
     );
+}
+
+export function onLoad($node) {
+    assert.type($node, window.HTMLElement);
+    return new rxjs.Observable((observer) => {
+        $node.onload = () => {
+            observer.next($node);
+            observer.complete();
+        };
+        $node.onerror = (err) => observer.error(err);
+    });
 }

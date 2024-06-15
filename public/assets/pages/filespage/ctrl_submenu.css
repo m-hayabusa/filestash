@@ -1,15 +1,16 @@
+/* General design */
 [is="component_submenu"] {
-    margin-top: 20px;
+    margin-top: 10px;
     position: sticky;
     top: 0;
     z-index: 3;
-    padding: 8px 0;
-    backdrop-filter: blur(10px);
+    padding: 4px 0;
+    backdrop-filter: blur(20px) saturate(2);
     transition: 0.2s ease box-shadow;
 }
 .scrolling [is="component_submenu"] {
     box-shadow: 0 5px 10px rgba(100,100,100,.05);
-    background: rgba(0,0,0,0.01);
+    background: rgba(245,245,245,0.9);
 }
 [is="component_submenu"] .component_submenu {
     display: flex;
@@ -18,21 +19,28 @@
 }
 [is="component_submenu"] .component_submenu .action button {
     padding: 6px 10px;
-    font-size: 0.8rem;
     background: transparent;
-    color: #626469fa;
     text-transform: uppercase;
+    font-size: 0.8rem;
+    color: var(--light);
     letter-spacing: 0;
     border-radius: 5px;
+    line-height: 15px;
 }
 [is="component_submenu"] .component_submenu .action button img {
-    width: 16px;
-    height: 16px;
+    width: 15px;
+    height: 15px;
     margin-left: -3px;
     margin-right: -3px;
 }
-[is="component_submenu"] .component_submenu .action.left button,
-[is="component_submenu"] .component_submenu .action.right:hover{
+[is="component_submenu"] .component_submenu .action.left {
+    margin-right: 2px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+[is="component_submenu"] .component_submenu .action.right:hover,
+[is="component_submenu"] .component_submenu .action.right.hover{
     background: var(--border);
 }
 [is="component_submenu"] .component_submenu .action button:hover {
@@ -44,11 +52,20 @@
     background: var(--border);
 }
 [is="component_submenu"] .component_submenu .action.right {
-    float: right;
     border-radius: 5px;
+    white-space: nowrap;
+}
+[is="component_submenu"] .component_submenu .action.right button[data-bind="clear"] {
+    display: flex;
+    align-items: center;
+    background: var(--border);
+    font-weight: bold;
+}
+[is="component_submenu"] .component_submenu .action.right button[data-bind="clear"] img {
+    padding-left: 2px;
 }
 
-
+/* dark mode */
 .dark-mode [is="component_submenu"] .component_submenu .action button img {
     filter: brightness(70%) invert(1);
 }
@@ -60,7 +77,11 @@
     background: var(--bg-color);
 }
 
-
+/* search */
+/* img[alt="search"]:hover ~ input { */
+/*     background: red; */
+/*     display: block; */
+/* } */
 
 /* .component_submenu .menubar { */
 /*     font-size: 15px; */

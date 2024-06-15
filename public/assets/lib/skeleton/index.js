@@ -67,9 +67,7 @@ export function createFragment(str) {
     const $n = window.document.createElement("div");
     $n.innerHTML = str;
     const $doc = document.createDocumentFragment();
-    for (let i=0; i<$n.children.length; i++) {
-        $doc.appendChild($n.children[i].cloneNode(true));
-    }
+    for (let i=0; i<$n.children.length; i++) $doc.appendChild($n.children[i].cloneNode(true));
     $n.remove();
     return $doc;
 }
@@ -78,8 +76,10 @@ export function createRender($parent) {
     if (!($parent instanceof window.HTMLElement)) throw new Error(`assert failed: createRender on non HTMLElement`);
     return ($view) => {
         if ($view instanceof window.HTMLElement) $parent.replaceChildren($view);
+        else if ($view instanceof window.DocumentFragment) $parent.replaceChildren($view);
         else throw new Error(`Unknown view type: ${typeof $view}`);
+        return $parent;
     };
 }
 
-export function nop() {}
+export function nop() { Promise.resolve(); }

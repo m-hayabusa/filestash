@@ -1,9 +1,7 @@
 import { onDestroy } from "./skeleton/index.js";
 import assert from "./assert.js";
-import * as rxjs from "./vendor/rxjs.min.js";
-
-// https://github.com/ReactiveX/rxjs/issues/4416#issuecomment-620847759
-import * as ajaxModule from "./vendor/rxjs-ajax.min.js";
+import * as rxjs from "./vendor/rxjs/rxjs.min.js";
+import * as ajaxModule from "./vendor/rxjs/rxjs-ajax.min.js"; // https://github.com/ReactiveX/rxjs/issues/4416#issuecomment-620847759
 
 export default rxjs;
 export const ajax = ajaxModule.ajax;
@@ -42,10 +40,16 @@ export function preventDefault() {
 }
 
 export function onClick($node) {
-    assert.type($node, window.HTMLElement);
-    return rxjs.fromEvent($node, "click").pipe(
-        rxjs.map(() => $node)
+    const sideE = ($node) => {
+        assert.type($node, window.HTMLElement);
+        return rxjs.fromEvent($node, "click").pipe(
+            rxjs.map(() => $node)
+        );
+    };
+    if ($node instanceof window.NodeList) return rxjs.merge(
+        ...[...$node].map(($n) => sideE($n)),
     );
+    return sideE($node);
 }
 
 export function onLoad($node) {

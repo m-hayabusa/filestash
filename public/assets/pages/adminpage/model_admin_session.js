@@ -5,13 +5,18 @@ const sessionSubject$ = new rxjs.Subject();
 
 const adminSession$ = rxjs.merge(
     sessionSubject$,
-    rxjs.interval(30000).pipe(
+    rxjs.merge(
+        rxjs.interval(30000),
+        rxjs.fromEvent(document, "visibilitychange").pipe(rxjs.filter(() => !document.hidden)),
+    ).pipe(
         rxjs.startWith(null),
         rxjs.mergeMap(() => ajax({ url: "/admin/api/session", responseType: "json" })),
         rxjs.map(({ responseJSON }) => responseJSON.result),
-        rxjs.distinctUntilChanged(),
     )
-).pipe(rxjs.shareReplay(1));
+).pipe(
+    rxjs.distinctUntilChanged(),
+    rxjs.shareReplay(1)
+);
 
 export function isAdmin$() {
     return adminSession$;

@@ -17,9 +17,7 @@ import (
 	"time"
 )
 
-const GitCachePath = "data/cache/git/"
-
-var GitCache AppCache
+var git_cache AppCache
 
 type Git struct {
 	git *GitLib
@@ -28,11 +26,8 @@ type Git struct {
 func init() {
 	Backend.Register("git", Git{})
 
-	GitCache = NewAppCache()
-	cachePath := GetAbsolutePath(GitCachePath)
-	os.RemoveAll(cachePath)
-	os.MkdirAll(cachePath, os.ModePerm)
-	GitCache.OnEvict(func(key string, value interface{}) {
+	git_cache = NewAppCache()
+	git_cache.OnEvict(func(key string, value interface{}) {
 		g := value.(*Git)
 		g.Close()
 	})
@@ -53,7 +48,7 @@ type GitParams struct {
 }
 
 func (git Git) Init(params map[string]string, app *App) (IBackend, error) {
-	if obj := GitCache.Get(params); obj != nil {
+	if obj := git_cache.Get(params); obj != nil {
 		return obj.(*Git), nil
 	}
 	g := &Git{
@@ -93,42 +88,45 @@ func (git Git) Init(params map[string]string, app *App) (IBackend, error) {
 		p.committerEmail = "https://filestash.app"
 	}
 
-	hash := GenerateID(app)
-	p.basePath = GetAbsolutePath(GitCachePath + "repo_" + hash + "/")
+	hash := GenerateID(params)
+	p.basePath = GetAbsolutePath(
+		TMP_PATH,
+		"git_"+hash,
+	) + "/"
 
 	repo, err := g.git.open(p, p.basePath)
 	g.git.repo = repo
 	if err != nil {
 		return g, err
 	}
-	GitCache.Set(params, g)
+	git_cache.Set(params, g)
 	return g, nil
 }
 
 func (g Git) LoginForm() Form {
 	return Form{
 		Elmnts: []FormElement{
-			FormElement{
+			{
 				Name:  "type",
 				Value: "git",
 				Type:  "hidden",
 			},
-			FormElement{
+			{
 				Name:        "repo",
 				Type:        "text",
 				Placeholder: "Repository*",
 			},
-			FormElement{
+			{
 				Name:        "username",
 				Type:        "text",
 				Placeholder: "Username",
 			},
-			FormElement{
+			{
 				Name:        "password",
 				Type:        "long_password",
 				Placeholder: "Password",
 			},
-			FormElement{
+			{
 				Name:        "advanced",
 				Type:        "enable",
 				Placeholder: "Advanced",
@@ -138,49 +136,49 @@ func (g Git) LoginForm() Form {
 					"git_committer_email", "git_committer_name",
 				},
 			},
-			FormElement{
+			{
 				Id:          "git_path",
 				Name:        "path",
 				Type:        "text",
 				Placeholder: "Path",
 			},
-			FormElement{
+			{
 				Id:          "git_passphrase",
 				Name:        "passphrase",
 				Type:        "text",
 				Placeholder: "Passphrase",
 			},
-			FormElement{
+			{
 				Id:          "git_commit",
 				Name:        "commit",
 				Type:        "text",
 				Placeholder: "Commit Format: default to \"{action}({filename}): {path}\"",
 			},
-			FormElement{
+			{
 				Id:          "git_branch",
 				Name:        "branch",
 				Type:        "text",
 				Placeholder: "Branch: default to \"master\"",
 			},
-			FormElement{
+			{
 				Id:          "git_author_email",
 				Name:        "author_email",
 				Type:        "text",
 				Placeholder: "Author email",
 			},
-			FormElement{
+			{
 				Id:          "git_author_name",
 				Name:        "author_name",
 				Type:        "text",
 				Placeholder: "Author name",
 			},
-			FormElement{
+			{
 				Id:          "git_committer_email",
 				Name:        "committer_email",
 				Type:        "text",
 				Placeholder: "Committer email",
 			},
-			FormElement{
+			{
 				Id:          "git_committer_name",
 				Name:        "committer_name",
 				Type:        "text",

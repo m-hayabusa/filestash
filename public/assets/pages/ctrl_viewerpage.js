@@ -3,7 +3,7 @@ import rxjs, { effect } from "../lib/rx.js";
 import { ApplicationError } from "../lib/error.js";
 import { basename } from "../lib/path.js";
 import { loadCSS } from "../helpers/loader.js";
-import WithShell from "../components/decorator_shell_filemanager.js";
+import WithShell, { init as initShell } from "../components/decorator_shell_filemanager.js";
 import { get as getConfig } from "../model/config.js";
 
 import ctrlError from "./ctrl_error.js";
@@ -18,9 +18,9 @@ const mime$ = getConfig().pipe(
 );
 
 function loadModule(appName) {
-    switch(appName) {
+    switch (appName) {
     case "editor":
-        return import("./viewerpage/application_codemirror.js");
+        return import("./viewerpage/application_editor.js");
     case "pdf":
         return import("./viewerpage/application_pdf.js");
     case "image":
@@ -35,6 +35,8 @@ function loadModule(appName) {
         return import("./viewerpage/application_video.js");
     case "ebook":
         return import("./viewerpage/application_ebook.js");
+    case "3d":
+        return import("./viewerpage/application_3d.js");
     case "appframe":
         return import("./viewerpage/application_iframe.js");
     default:
@@ -53,13 +55,12 @@ export default WithShell(async function(render) {
         )),
         rxjs.catchError(ctrlError()),
     ));
-
-})
+});
 
 export async function init() {
     return Promise.all([
         loadCSS(import.meta.url, "./ctrl_viewerpage.css"),
-        loadCSS(import.meta.url, "../components/decorator_shell_filemanager.css"),
+        initShell(),
         mime$.pipe(
             rxjs.map((mimes) => opener(basename(getCurrentPath()), mimes)),
             rxjs.mergeMap(([opener]) => loadModule(opener)),

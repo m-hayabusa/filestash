@@ -8,12 +8,6 @@ import (
 //go:generate go run ../generator/constants.go
 const (
 	APP_VERSION       = "v0.5"
-	LOG_PATH          = "data/state/log/"
-	CONFIG_PATH       = "data/state/config/"
-	DB_PATH           = "data/state/db/"
-	FTS_PATH          = "data/state/search/"
-	CERT_PATH         = "data/state/certs/"
-	TMP_PATH          = "data/cache/tmp/"
 	COOKIE_NAME_AUTH  = "auth"
 	COOKIE_NAME_PROOF = "proof"
 	COOKIE_NAME_ADMIN = "admin"
@@ -22,11 +16,35 @@ const (
 	URL_SETUP         = "/admin/setup"
 )
 
+var (
+	CONFIG_PATH = "state/config/"
+	CERT_PATH   = "state/certs/"
+	DB_PATH     = "state/db/"
+	FTS_PATH    = "state/search/"
+	LOG_PATH    = "state/log/"
+	TMP_PATH    = "cache/"
+)
+
 func init() {
-	os.MkdirAll(filepath.Join(GetCurrentDir(), LOG_PATH), os.ModePerm)
-	os.MkdirAll(filepath.Join(GetCurrentDir(), FTS_PATH), os.ModePerm)
-	os.RemoveAll(filepath.Join(GetCurrentDir(), TMP_PATH))
-	os.MkdirAll(filepath.Join(GetCurrentDir(), TMP_PATH), os.ModePerm)
+	// STEP1: setup app path
+	rootPath := "data/"
+	if p := os.Getenv("FILESTASH_PATH"); p != "" {
+		rootPath = p
+	}
+	LOG_PATH = filepath.Join(rootPath, LOG_PATH)
+	CONFIG_PATH = filepath.Join(rootPath, CONFIG_PATH)
+	DB_PATH = filepath.Join(rootPath, DB_PATH)
+	FTS_PATH = filepath.Join(rootPath, FTS_PATH)
+	CERT_PATH = filepath.Join(rootPath, CERT_PATH)
+	TMP_PATH = filepath.Join(rootPath, TMP_PATH)
+
+	// STEP2: initialise the config
+	os.MkdirAll(GetAbsolutePath(CERT_PATH), os.ModePerm)
+	os.MkdirAll(GetAbsolutePath(DB_PATH), os.ModePerm)
+	os.MkdirAll(GetAbsolutePath(FTS_PATH), os.ModePerm)
+	os.MkdirAll(GetAbsolutePath(LOG_PATH), os.ModePerm)
+	os.RemoveAll(GetAbsolutePath(TMP_PATH))
+	os.MkdirAll(GetAbsolutePath(TMP_PATH), os.ModePerm)
 }
 
 var (

@@ -14,7 +14,7 @@ RUN apk add make git gzip brotli && \
     cd public && make compress
 
 # STEP3: BUILD THE BACKEND
-FROM golang:1.19-bookworm AS builder_backend
+FROM golang:1.21-bookworm AS builder_backend
 WORKDIR /home/
 COPY --from=builder_frontend /home/ ./
 RUN apt-get update > /dev/null && \
@@ -41,19 +41,19 @@ RUN apt-get update > /dev/null && \
     export CTAN_REPO="http://mirror.las.iastate.edu/tex-archive/systems/texlive/tlnet" && \
     curl -sL "https://yihui.name/gh/tinytex/tools/install-unx.sh" | sh && \
     mv ~/.TinyTeX /usr/share/tinytex && \
-    /usr/share/tinytex/bin/x86_64-linux/tlmgr install wasy && \
-    /usr/share/tinytex/bin/x86_64-linux/tlmgr install ulem && \
-    /usr/share/tinytex/bin/x86_64-linux/tlmgr install marvosym && \
-    /usr/share/tinytex/bin/x86_64-linux/tlmgr install wasysym && \
-    /usr/share/tinytex/bin/x86_64-linux/tlmgr install xcolor && \
-    /usr/share/tinytex/bin/x86_64-linux/tlmgr install listings && \
-    /usr/share/tinytex/bin/x86_64-linux/tlmgr install parskip && \
-    /usr/share/tinytex/bin/x86_64-linux/tlmgr install float && \
-    /usr/share/tinytex/bin/x86_64-linux/tlmgr install wrapfig && \
-    /usr/share/tinytex/bin/x86_64-linux/tlmgr install sectsty && \
-    /usr/share/tinytex/bin/x86_64-linux/tlmgr install capt-of && \
-    /usr/share/tinytex/bin/x86_64-linux/tlmgr install epstopdf-pkg && \
-    /usr/share/tinytex/bin/x86_64-linux/tlmgr install cm-super && \
+    /usr/share/tinytex/bin/$(uname -m)-linux/tlmgr install wasy && \
+    /usr/share/tinytex/bin/$(uname -m)-linux/tlmgr install ulem && \
+    /usr/share/tinytex/bin/$(uname -m)-linux/tlmgr install marvosym && \
+    /usr/share/tinytex/bin/$(uname -m)-linux/tlmgr install wasysym && \
+    /usr/share/tinytex/bin/$(uname -m)-linux/tlmgr install xcolor && \
+    /usr/share/tinytex/bin/$(uname -m)-linux/tlmgr install listings && \
+    /usr/share/tinytex/bin/$(uname -m)-linux/tlmgr install parskip && \
+    /usr/share/tinytex/bin/$(uname -m)-linux/tlmgr install float && \
+    /usr/share/tinytex/bin/$(uname -m)-linux/tlmgr install wrapfig && \
+    /usr/share/tinytex/bin/$(uname -m)-linux/tlmgr install sectsty && \
+    /usr/share/tinytex/bin/$(uname -m)-linux/tlmgr install capt-of && \
+    /usr/share/tinytex/bin/$(uname -m)-linux/tlmgr install epstopdf-pkg && \
+    /usr/share/tinytex/bin/$(uname -m)-linux/tlmgr install cm-super && \
     ln -s /usr/share/tinytex/bin/x86_64-linux/pdflatex /usr/local/bin/pdflatex && \
     apt-get purge -y --auto-remove perl wget && \
     # Cleanup
@@ -64,6 +64,9 @@ RUN apt-get update > /dev/null && \
 
 RUN useradd filestash && \
     chown -R filestash:filestash /app/ && \
+    find /app/data/ -type d -exec chmod 770 {} \; && \
+    find /app/data/ -type f -exec chmod 760 {} \; && \
+    chmod 730 /app/filestash && \
     rm -rf /var/lib/apt/lists/* && \
     rm -rf /tmp/*
 

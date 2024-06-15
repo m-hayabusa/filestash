@@ -6,11 +6,12 @@ import (
 	"encoding/base64"
 	"fmt"
 	. "github.com/mickael-kerjean/filestash/server/common"
-	"github.com/tredoe/osutil/user/crypt"
-	"github.com/tredoe/osutil/user/crypt/apr1_crypt"
-	"github.com/tredoe/osutil/user/crypt/md5_crypt"
-	"github.com/tredoe/osutil/user/crypt/sha256_crypt"
-	"github.com/tredoe/osutil/user/crypt/sha512_crypt"
+
+	"github.com/mickael-kerjean/filestash/server/plugin/plg_authenticate_htpasswd/deps/crypt"
+	"github.com/mickael-kerjean/filestash/server/plugin/plg_authenticate_htpasswd/deps/crypt/apr1_crypt"
+	"github.com/mickael-kerjean/filestash/server/plugin/plg_authenticate_htpasswd/deps/crypt/md5_crypt"
+	"github.com/mickael-kerjean/filestash/server/plugin/plg_authenticate_htpasswd/deps/crypt/sha256_crypt"
+	"github.com/mickael-kerjean/filestash/server/plugin/plg_authenticate_htpasswd/deps/crypt/sha512_crypt"
 	"net/http"
 	"strings"
 )
@@ -87,7 +88,7 @@ func (this Htpasswd) Callback(formData map[string]string, idpParams map[string]s
 		return nil, NewError("You haven't configured any users", 500)
 	}
 	lines := strings.Split(idpParams["users"], "\n")
-	for _, line := range lines {
+	for n, line := range lines {
 		pair := strings.SplitN(line, ":", 2)
 		if len(pair) != 2 {
 			continue
@@ -103,6 +104,7 @@ func (this Htpasswd) Callback(formData map[string]string, idpParams map[string]s
 		return map[string]string{
 			"user":     formData["user"],
 			"password": formData["password"],
+			"n":        fmt.Sprintf("%d", n),
 		}, nil
 	}
 	http.SetCookie(res, &http.Cookie{

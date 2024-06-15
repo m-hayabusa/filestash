@@ -5,22 +5,26 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"io"
 	"os"
+	"os/user"
 )
 
 func init() {
-	Backend.Register("local", Local{})
+	Backend.Register("local", &Local{})
 }
 
 type Local struct{}
 
 func (this Local) Init(params map[string]string, app *App) (IBackend, error) {
-	if err := bcrypt.CompareHashAndPassword(
+	backend := &Local{}
+	if params["password"] == Config.Get("general.secret_key").String() {
+		return backend, nil
+	} else if err := bcrypt.CompareHashAndPassword(
 		[]byte(Config.Get("auth.admin").String()),
 		[]byte(params["password"]),
-	); err != nil {
-		return nil, ErrAuthenticationFailed
+	); err == nil {
+		return backend, nil
 	}
-	return Local{}, nil
+	return nil, ErrAuthenticationFailed
 }
 
 func (this Local) LoginForm() Form {
@@ -46,7 +50,13 @@ func (this Local) LoginForm() Form {
 }
 
 func (this Local) Home() (string, error) {
-	return os.UserHomeDir()
+	if home, err := os.UserHomeDir(); err == nil {
+		return home, nil
+	}
+	if currentUser, err := user.Current(); err == nil && currentUser.HomeDir != "" {
+		return currentUser.HomeDir, nil
+	}
+	return "/", nil
 }
 
 func (this Local) Ls(path string) ([]os.FileInfo, error) {

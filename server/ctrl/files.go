@@ -27,17 +27,13 @@ type FileInfo struct {
 }
 
 var (
-	FileCache  AppCache
-	ZipTimeout func() int
+	file_cache  AppCache
+	zip_timeout func() int
+	disable_csp func() bool
 )
 
 func init() {
-	FileCache = NewAppCache()
-	cachePath := GetAbsolutePath(TMP_PATH)
-	FileCache.OnEvict(func(key string, value interface{}) {
-		os.RemoveAll(filepath.Join(cachePath, key))
-	})
-	ZipTimeout = func() int {
+	zip_timeout = func() int {
 		return Config.Get("features.protection.zip_timeout").Schema(func(f *FormElement) *FormElement {
 			if f == nil {
 				f = &FormElement{}
@@ -50,7 +46,26 @@ func init() {
 			return f
 		}).Int()
 	}
-	ZipTimeout()
+	disable_csp = func() bool {
+		return Config.Get("features.protection.disable_csp").Schema(func(f *FormElement) *FormElement {
+			if f == nil {
+				f = &FormElement{}
+			}
+			f.Default = false
+			f.Name = "disable_csp"
+			f.Type = "boolean"
+			f.Description = "Disable the content security policy. Unless you 100% trust the content in your storage and want to execute code running from that storage, you shouldn't have this option checked"
+			return f
+		}).Bool()
+	}
+	file_cache = NewAppCache()
+	file_cache.OnEvict(func(key string, value interface{}) {
+		os.RemoveAll(filepath.Join(GetAbsolutePath(TMP_PATH), key))
+	})
+	Hooks.Register.Onload(func() {
+		zip_timeout()
+		disable_csp()
+	})
 }
 
 func FileLs(ctx *App, res http.ResponseWriter, req *http.Request) {
@@ -69,50 +84,36 @@ func FileLs(ctx *App, res http.ResponseWriter, req *http.Request) {
 		SendErrorResult(res, err)
 		return
 	}
+	var perms Metadata = Metadata{}
+	if obj, ok := ctx.Backend.(interface{ Meta(path string) Metadata }); ok {
+		perms = obj.Meta(path)
+	}
 	for _, auth := range Hooks.Get.AuthorisationMiddleware() {
 		if err = auth.Ls(ctx, path); err != nil {
 			Log.Info("ls::auth '%s'", err.Error())
 			SendErrorResult(res, ErrNotAuthorized)
 			return
 		}
-	}
-
-	entries, err := ctx.Backend.Ls(path)
-	if err != nil {
-		Log.Debug("ls::backend '%s'", err.Error())
-		SendErrorResult(res, err)
-		return
-	}
-
-	files := make([]FileInfo, len(entries))
-	etagger := fnv.New32()
-	etagger.Write([]byte(path + strconv.Itoa(len(entries))))
-	for i := 0; i < len(entries); i++ {
-		name := entries[i].Name()
-		modTime := entries[i].ModTime().UnixNano() / int64(time.Millisecond)
-
-		if i < 200 { // etag is generated from a few values to avoid large memory usage
-			etagger.Write([]byte(name + strconv.Itoa(int(modTime))))
+		ctx.Context = context.WithValue(ctx.Context, "AUDIT", false)
+		if err = auth.Mkdir(ctx, path); err != nil {
+			perms.CanCreateDirectory = NewBool(false)
 		}
-
-		files[i] = FileInfo{
-			Name: name,
-			Size: entries[i].Size(),
-			Time: modTime,
-			Type: func(mode os.FileMode) string {
-				if mode.IsRegular() {
-					return "file"
-				}
-				return "directory"
-			}(entries[i].Mode()),
+		if err = auth.Touch(ctx, path); err != nil {
+			perms.CanCreateFile = NewBool(false)
+		}
+		if err = auth.Mv(ctx, path, path); err != nil {
+			perms.CanRename = NewBool(false)
+		}
+		if err = auth.Save(ctx, path); err != nil {
+			perms.CanUpload = NewBool(false)
+		}
+		if err = auth.Rm(ctx, path); err != nil {
+			perms.CanDelete = NewBool(false)
+		}
+		if err = auth.Cat(ctx, path); err != nil {
+			perms.CanSee = NewBool(false)
 		}
 	}
-
-	var perms Metadata = Metadata{}
-	if obj, ok := ctx.Backend.(interface{ Meta(path string) Metadata }); ok {
-		perms = obj.Meta(path)
-	}
-
 	if model.CanEdit(ctx) == false {
 		perms.CanCreateFile = NewBool(false)
 		perms.CanCreateDirectory = NewBool(false)
@@ -128,6 +129,41 @@ func FileLs(ctx *App, res http.ResponseWriter, req *http.Request) {
 	}
 	if model.CanShare(ctx) == false {
 		perms.CanShare = NewBool(false)
+	}
+
+	entries, err := ctx.Backend.Ls(path)
+	if err != nil {
+		Log.Debug("ls::backend '%s'", err.Error())
+		SendErrorResult(res, err)
+		return
+	}
+
+	files := make([]FileInfo, len(entries))
+	etagger := fnv.New32()
+	etagger.Write([]byte(path + strconv.Itoa(len(entries))))
+	for i := 0; i < len(entries); i++ {
+		name := entries[i].Name()
+		files[i] = FileInfo{
+			Name: name,
+			Size: entries[i].Size(),
+			Time: func(mt time.Time) (modTime int64) {
+				if mt.IsZero() == false {
+					modTime = mt.UnixNano() / int64(time.Millisecond)
+
+				}
+				if i < 200 { // etag is generated from a few values to avoid large memory usage
+					etagger.Write([]byte(name + strconv.Itoa(int(modTime))))
+				}
+
+				return modTime
+			}(entries[i].ModTime()),
+			Type: func(mode os.FileMode) string {
+				if mode.IsRegular() {
+					return "file"
+				}
+				return "directory"
+			}(entries[i].Mode()),
+		}
 	}
 
 	etagValue := base64.StdEncoding.EncodeToString(etagger.Sum(nil))
@@ -176,7 +212,7 @@ func FileCat(ctx *App, res http.ResponseWriter, req *http.Request) {
 	// use our cache if necessary (range request) when possible
 	if req.Header.Get("range") != "" {
 		ctx.Session["_path"] = path
-		if p := FileCache.Get(ctx.Session); p != nil {
+		if p := file_cache.Get(ctx.Session); p != nil {
 			f, err := os.OpenFile(p.(string), os.O_RDONLY, os.ModePerm)
 			if err == nil {
 				file = f
@@ -260,7 +296,7 @@ func FileCat(ctx *App, res http.ResponseWriter, req *http.Request) {
 				SendErrorResult(res, err)
 				return
 			}
-			FileCache.Set(ctx.Session, tmpPath)
+			file_cache.Set(ctx.Session, tmpPath)
 			if fi, err := f.Stat(); err == nil {
 				contentLength = fi.Size()
 			}
@@ -296,10 +332,10 @@ func FileCat(ctx *App, res http.ResponseWriter, req *http.Request) {
 	}
 
 	// publish headers
-	if contentLength != -1 {
+	if contentLength >= 0 {
 		header.Set("Content-Length", fmt.Sprintf("%d", contentLength))
 	}
-	if header.Get("Content-Security-Policy") == "" {
+	if disable_csp() == false {
 		header.Set("Content-Security-Policy", "default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; font-src data:; script-src-elem 'self'")
 	}
 	if fname := query.Get("name"); fname != "" {
@@ -571,7 +607,7 @@ func FileDownloader(ctx *App, res http.ResponseWriter, req *http.Request) {
 	start := time.Now()
 	var addToZipRecursive func(*App, *zip.Writer, string, string, *[]string) error
 	addToZipRecursive = func(c *App, zw *zip.Writer, backendPath string, zipRoot string, errList *[]string) (err error) {
-		if time.Now().Sub(start) > time.Duration(ZipTimeout())*time.Second {
+		if time.Now().Sub(start) > time.Duration(zip_timeout())*time.Second {
 			Log.Debug("downloader::timeout zip not completed due to timeout")
 			return ErrTimeout
 		}
@@ -676,7 +712,7 @@ func FileExtract(ctx *App, res http.ResponseWriter, req *http.Request) {
 		}
 	}
 
-	c, cancel := context.WithTimeout(ctx.Context, time.Duration(ZipTimeout())*time.Second)
+	c, cancel := context.WithTimeout(ctx.Context, time.Duration(zip_timeout())*time.Second)
 	extractPath := func(base string, path string) (string, error) {
 		base = filepath.Dir(base)
 		path = filepath.Join(base, path)

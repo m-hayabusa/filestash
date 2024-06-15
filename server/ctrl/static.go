@@ -57,15 +57,18 @@ func LegacyIndexHandler(ctx *App, res http.ResponseWriter, req *http.Request) { 
 		// Microsoft is behaving on many occasion differently than Firefox / Chrome.
 		// I have neither the time / motivation for it to work properly
 		res.WriteHeader(http.StatusBadRequest)
-		res.Write([]byte(
-			Page(`
-                  <h1>Internet explorer is not supported</h1>
-                  <p>
-                    We don't support IE / Edge at this time
-                    <br>
-                    Please use either Chromium, Firefox or Chrome
-                  </p>
-                `)))
+		res.Write([]byte(Page(`
+			<h1>Internet explorer is not supported</h1>
+			<p>
+				We don't support IE / Edge at this time
+				<br>
+				Please use either Chromium, Firefox or Chrome
+			</p>
+		`)))
+		return
+	}
+	if os.Getenv("CANARY") != "" {
+		LegacyServeFile(res, req, "/index.frontoffice.html")
 		return
 	}
 	LegacyServeFile(res, req, "/index.html")
@@ -97,7 +100,8 @@ func LegacyServeFile(res http.ResponseWriter, req *http.Request, filePath string
 		curPath := filePath + cfg.FileExt
 		file, err := WWWEmbed.Open("static/www" + curPath)
 		if env := os.Getenv("DEBUG"); env == "true" {
-			//file, err = WWWDir.Open("server/ctrl/static/www" + curPath)
+			file, err = WWWDir.Open("server/ctrl/static/www" + curPath)
+		} else if os.Getenv("CANARY") != "" {
 			file, err = WWWDir.Open("public" + curPath)
 		}
 		if err != nil {
@@ -137,8 +141,8 @@ func ServeBackofficeHandler(ctx *App, res http.ResponseWriter, req *http.Request
 			"/admin/assets/pages/adminpage/decorator.js", "/admin/assets/pages/adminpage/decorator_sidemenu.js", "/admin/assets/pages/adminpage/decorator_admin_only.js",
 			"/admin/assets/components/icon.js", "/admin/assets/lib/locales.js", "/admin/assets/lib/animate.js",
 			"/admin/assets/lib/skeleton/router.js", "/admin/assets/lib/skeleton/lifecycle.js",
-			"/admin/assets/lib/vendor/rxjs-shared.min.js", "/admin/assets/lib/vendor/rxjs-ajax.min.js", "/admin/assets/lib/ajax.js",
-			"/admin/assets/lib/rx.js", "/admin/assets/lib/vendor/rxjs.min.js",
+			"/admin/assets/lib/vendor/rxjs/rxjs-shared.min.js", "/admin/assets/lib/vendor/rxjs/rxjs-ajax.min.js", "/admin/assets/lib/ajax.js",
+			"/admin/assets/lib/rx.js", "/admin/assets/lib/vendor/rxjs/rxjs.min.js",
 		}
 		switch url {
 		case "/admin/backend":
@@ -201,18 +205,21 @@ func ServeFrontofficeHandler(ctx *App, res http.ResponseWriter, req *http.Reques
 		// Microsoft is behaving on many occasion differently than Firefox / Chrome.
 		// I have neither the time / motivation for it to work properly
 		res.WriteHeader(http.StatusBadRequest)
-		res.Write([]byte(
-			Page(`
-                  <h1>Internet explorer is not supported</h1>
-                  <p>
-                    We don't support IE / Edge at this time
-                    <br>
-                    Please use either Chromium, Firefox or Chrome
-                  </p>
-                `)))
+		res.Write([]byte(Page(`
+			<h1>Internet explorer is not supported</h1>
+			<p>
+				We don't support IE / Edge at this time
+				<br>
+				Please use either Chromium, Firefox or Chrome
+			</p>
+		`)))
 		return
 	}
-	ServeFile(res, req, WWWPublic, "index.frontoffice.html")
+	if os.Getenv("CANARY") != "" {
+		ServeFile(res, req, WWWPublic, "index.frontoffice.html")
+		return
+	}
+	ServeFile(res, req, WWWPublic, "index.html")
 }
 
 func NotFoundHandler(ctx *App, res http.ResponseWriter, req *http.Request) {

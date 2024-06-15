@@ -39,5 +39,5 @@ import (
 )
 
 func init() {
-	Log.Debug("Plugin loader")
+	Hooks.Register.Onload(func() { Log.Debug("plugins loaded") })
 }

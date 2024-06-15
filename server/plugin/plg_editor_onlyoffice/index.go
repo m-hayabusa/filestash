@@ -22,17 +22,23 @@ import (
 
 var (
 	SECRET_KEY_DERIVATE_FOR_ONLYOFFICE string
-	OnlyOfficeCache                    *cache.Cache
+
+	onlyoffice_cache *cache.Cache
+	plugin_enable    func() bool
+	server_url       func() string
+	can_download     func() bool
 )
 
-type OnlyOfficeCacheData struct {
+type onlyOfficeCacheData struct {
 	Path string
 	Save func(path string, file io.Reader) error
 	Cat  func(path string) (io.ReadCloser, error)
 }
 
 func init() {
-	plugin_enable := func() bool {
+	SECRET_KEY_DERIVATE_FOR_ONLYOFFICE = Hash("ONLYOFFICE_"+SECRET_KEY, len(SECRET_KEY))
+	onlyoffice_cache = cache.New(720*time.Minute, 720*time.Minute)
+	plugin_enable = func() bool {
 		return Config.Get("features.office.enable").Schema(func(f *FormElement) *FormElement {
 			if f == nil {
 				f = &FormElement{}
@@ -40,47 +46,52 @@ func init() {
 			f.Name = "enable"
 			f.Type = "enable"
 			f.Target = []string{"onlyoffice_server", "onlyoffice_can_download"}
-			f.Description = "Enable/Disable the office suite to manage word, excel and powerpoint documents. This setting requires a restart to comes into effect"
+			f.Description = "Enable/Disable the office suite to manage word, excel and powerpoint documents."
 			f.Default = false
 			if u := os.Getenv("ONLYOFFICE_URL"); u != "" {
 				f.Default = true
 			}
 			return f
 		}).Bool()
-	}()
-	Config.Get("features.office.onlyoffice_server").Schema(func(f *FormElement) *FormElement {
-		if f == nil {
-			f = &FormElement{}
-		}
-		f.Id = "onlyoffice_server"
-		f.Name = "onlyoffice_server"
-		f.Type = "text"
-		f.Description = "Location of your OnlyOffice server"
-		f.Default = "http://127.0.0.1:8080"
-		f.Placeholder = "Eg: http://127.0.0.1:8080"
-		if u := os.Getenv("ONLYOFFICE_URL"); u != "" {
-			f.Default = u
-			f.Placeholder = fmt.Sprintf("Default: '%s'", u)
-		}
-		return f
-	})
-	Config.Get("features.office.can_download").Schema(func(f *FormElement) *FormElement {
-		if f == nil {
-			f = &FormElement{}
-		}
-		f.Id = "onlyoffice_can_download"
-		f.Name = "can_download"
-		f.Type = "boolean"
-		f.Description = "Display Download button in onlyoffice"
-		f.Default = true
-		return f
-	})
-
-	if plugin_enable == false {
-		return
+	}
+	server_url = func() string {
+		return Config.Get("features.office.onlyoffice_server").Schema(func(f *FormElement) *FormElement {
+			if f == nil {
+				f = &FormElement{}
+			}
+			f.Id = "onlyoffice_server"
+			f.Name = "onlyoffice_server"
+			f.Type = "text"
+			f.Description = "Location of your OnlyOffice server"
+			f.Default = "http://127.0.0.1:8080"
+			f.Placeholder = "Eg: http://127.0.0.1:8080"
+			if u := os.Getenv("ONLYOFFICE_URL"); u != "" {
+				f.Default = u
+				f.Placeholder = fmt.Sprintf("Default: '%s'", u)
+			}
+			return f
+		}).String()
+	}
+	can_download = func() bool {
+		return Config.Get("features.office.can_download").Schema(func(f *FormElement) *FormElement {
+			if f == nil {
+				f = &FormElement{}
+			}
+			f.Id = "onlyoffice_can_download"
+			f.Name = "can_download"
+			f.Type = "boolean"
+			f.Description = "Display Download button in onlyoffice"
+			f.Default = true
+			return f
+		}).Bool()
 	}
 
-	SECRET_KEY_DERIVATE_FOR_ONLYOFFICE = Hash("ONLYOFFICE_"+SECRET_KEY, len(SECRET_KEY))
+	Hooks.Register.Onload(func() {
+		plugin_enable()
+		server_url()
+		can_download()
+	})
+
 	Hooks.Register.HttpEndpoint(func(r *mux.Router, app *App) error {
 		oods := r.PathPrefix("/onlyoffice").Subrouter()
 		oods.PathPrefix("/static/").HandlerFunc(StaticHandler).Methods("GET", "POST")
@@ -98,20 +109,21 @@ func init() {
 		return nil
 	})
 	Hooks.Register.XDGOpen(`
-    if(mime === "application/word" || mime === "application/msword" ||
-       mime === "application/vnd.oasis.opendocument.text" || mime === "application/vnd.oasis.opendocument.spreadsheet" ||
-       mime === "application/excel" || mime === "application/vnd.ms-excel" || mime === "application/powerpoint" ||
-       mime === "application/vnd.ms-powerpoint" || mime === "application/vnd.oasis.opendocument.presentation" ) {
+        if(mime === "application/word" || mime === "application/msword" ||
+           mime === "application/vnd.oasis.opendocument.text" || mime === "application/vnd.oasis.opendocument.spreadsheet" ||
+           mime === "application/excel" || mime === "application/vnd.ms-excel" || mime === "application/powerpoint" ||
+           mime === "application/vnd.ms-powerpoint" || mime === "application/vnd.oasis.opendocument.presentation" ) {
               return ["appframe", {"endpoint": "/api/onlyoffice/iframe"}];
-       }
-    `)
-	OnlyOfficeCache = cache.New(720*time.Minute, 720*time.Minute)
+           }
+   `)
 }
 
 func StaticHandler(res http.ResponseWriter, req *http.Request) {
+	if plugin_enable() == false {
+		return
+	}
 	req.URL.Path = strings.TrimPrefix(req.URL.Path, "/onlyoffice/static")
-	oodsLocation := Config.Get("features.office.onlyoffice_server").String()
-	u, err := url.Parse(oodsLocation)
+	u, err := url.Parse(server_url())
 	if err != nil {
 		SendErrorResult(res, err)
 		return
@@ -158,10 +170,13 @@ func StaticHandler(res http.ResponseWriter, req *http.Request) {
 }
 
 func IframeContentHandler(ctx *App, res http.ResponseWriter, req *http.Request) {
+	if plugin_enable() == false {
+		return
+	}
 	if model.CanRead(ctx) == false {
 		SendErrorResult(res, ErrPermissionDenied)
 		return
-	} else if oodsLocation := Config.Get("features.office.onlyoffice_server").String(); oodsLocation == "" {
+	} else if server_url() == "" {
 		res.WriteHeader(http.StatusServiceUnavailable)
 		res.Write([]byte("<p>The Onlyoffice server hasn't been configured</p>"))
 		res.Write([]byte("<style>p {color: white; text-align: center; margin-top: 50px; font-size: 20px; opacity: 0.6; font-family: monospace; } </style>"))
@@ -188,7 +203,7 @@ func IframeContentHandler(ctx *App, res http.ResponseWriter, req *http.Request) 
 		return
 	}
 
-	userId = GenerateID(ctx)
+	userId = GenerateID(ctx.Session)
 	f, err := ctx.Backend.Cat(path)
 	if err != nil {
 		SendErrorResult(res, err)
@@ -304,7 +319,7 @@ func IframeContentHandler(ctx *App, res http.ResponseWriter, req *http.Request) 
 		return ""
 	}(path)
 	filetype = strings.TrimPrefix(filepath.Ext(filename), ".")
-	OnlyOfficeCache.Set(key, &OnlyOfficeCacheData{path, ctx.Backend.Save, ctx.Backend.Cat}, cache.DefaultExpiration)
+	onlyoffice_cache.Set(key, &onlyOfficeCacheData{path, ctx.Backend.Save, ctx.Backend.Cat}, cache.DefaultExpiration)
 	res.Write([]byte(fmt.Sprintf(`<!DOCTYPE html>
 <html lang="en">
   <head>
@@ -365,7 +380,7 @@ func IframeContentHandler(ctx *App, res http.ResponseWriter, req *http.Request) 
 		filetype,
 		key,
 		func() string {
-			if Config.Get("features.office.can_download").Bool() {
+			if can_download() {
 				return "true"
 			}
 			return "false"
@@ -378,18 +393,21 @@ func IframeContentHandler(ctx *App, res http.ResponseWriter, req *http.Request) 
 }
 
 func FetchContentHandler(res http.ResponseWriter, req *http.Request) {
+	if plugin_enable() == false {
+		return
+	}
 	var key string
 	if key = req.URL.Query().Get("key"); key == "" {
 		SendErrorResult(res, NewError("unspecified key", http.StatusBadRequest))
 		return
 	}
-	c, found := OnlyOfficeCache.Get(key)
+	c, found := onlyoffice_cache.Get(key)
 	if found == false {
 		res.WriteHeader(http.StatusInternalServerError)
 		res.Write([]byte(`{"error": 1, "message": "missing data fetcher handler"}`))
 		return
 	}
-	cData, valid := c.(*OnlyOfficeCacheData)
+	cData, valid := c.(*onlyOfficeCacheData)
 	if valid == false {
 		res.WriteHeader(http.StatusInternalServerError)
 		res.Write([]byte(`{"error": 1, "message": "invalid cache"}`))
@@ -405,7 +423,7 @@ func FetchContentHandler(res http.ResponseWriter, req *http.Request) {
 	f.Close()
 }
 
-type OnlyOfficeEventObject struct {
+type onlyOfficeEventObject struct {
 	Actions []struct {
 		Type   int    `json: "type"`
 		UserId string `json: "userid" `
@@ -431,7 +449,10 @@ type OnlyOfficeEventObject struct {
 }
 
 func OnlyOfficeEventHandler(res http.ResponseWriter, req *http.Request) {
-	event := OnlyOfficeEventObject{}
+	if plugin_enable() == false {
+		return
+	}
+	event := onlyOfficeEventObject{}
 	if err := json.NewDecoder(req.Body).Decode(&event); err != nil {
 		SendErrorResult(res, err)
 		return
@@ -453,13 +474,13 @@ func OnlyOfficeEventHandler(res http.ResponseWriter, req *http.Request) {
 	case 5:
 		Log.Warning("[onlyoffice] undocumented status. %+v", event)
 	case 6: // document is being edited, but the current document state is saved
-		saveObject, found := OnlyOfficeCache.Get(event.Key)
+		saveObject, found := onlyoffice_cache.Get(event.Key)
 		if found == false {
 			res.WriteHeader(http.StatusInternalServerError)
 			res.Write([]byte(`{"error": 1, "message": "doens't know where to store the given data"}`))
 			return
 		}
-		cData, valid := saveObject.(*OnlyOfficeCacheData)
+		cData, valid := saveObject.(*onlyOfficeCacheData)
 		if valid == false {
 			res.WriteHeader(http.StatusInternalServerError)
 			res.Write([]byte(`{"error": 1, "message": "[internal error] invalid save handler"}`))

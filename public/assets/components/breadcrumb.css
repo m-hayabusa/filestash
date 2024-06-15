@@ -5,36 +5,29 @@
 .component_breadcrumb .breadcrumb {
     margin: 0 0 0px 0;
     z-index: 1000;
-    padding: 3px 0 3px 10px;
 }
 .component_breadcrumb .breadcrumb .ul {
+    display: flex;
     list-style-type: none;
     margin: 0;
     width: 100%;
-    padding: 0 10px 0 10px;
     box-sizing: border-box;
+    padding: 2px 0;
 }
 .component_breadcrumb .breadcrumb .ul > span {
     display: block;
-    padding: 7px 0;
+    flex-grow: 1;
+    padding: 7px 7px 7px 0;
 }
 .component_breadcrumb .breadcrumb .ul div, .component_breadcrumb .breadcrumb .ul .li {
     display: inline-block;
 }
 .component_breadcrumb .component_logout {
-    float: right;
-    display: inline-block;
-    margin: 0 0px 0 5px;
-    line-height: 25px;
-    padding: 7px 0;
-}
-.component_breadcrumb .component_logout a {
-    display: block;
-    vertical-align: middle;
+    align-self: center;
+    padding-right: 10px;
 }
 .component_breadcrumb .component_logout .component_icon {
     height: 20px;
-    vertical-align: middle;
 }
 .component_breadcrumb .component_saving {
     padding-left: 1px;
@@ -44,8 +37,13 @@
 }
 .component_breadcrumb .component_path-element .label {
     color: rgba(0, 0, 0, 0.75);
-    padding: 4px 5px;
+    padding: 2px 5px;
 }
+.touch-yes .component_breadcrumb .component_path-element .label {
+    padding-top: 5px;
+    padding-bottom: 5px;
+}
+.component_breadcrumb .component_path-element .label span { display: inline-block; }
 .component_breadcrumb .component_path-element a.label {
     position: relative;
     color: rgba(0, 0, 0, 0.5);
@@ -71,32 +69,17 @@
     border-radius: 3px;
     letter-spacing: -0.5px;
 }
-.component_breadcrumb .component_path-element .component_path-element-wrapper.highlight a {
-    background: var(--emphasis-primary);
-    border: 2px solid var(--primary);
-    box-sizing: border-box;
+.component_breadcrumb .component_path-element.highlight .component_path-element-wrapper a {
+    color: var(--bg-color);
+    background: var(--dark);
+    border-radius: 3px;
 }
 .component_breadcrumb .component_separator img {
     vertical-align: middle;
 }
-.dark-mode .component_breadcrumb .component_separator img {
-    filter: brightness(0.5) invert(1);
-}
 
-body.touch-no .component_path-element-wrapper a.label:hover {
-    background: rgba(0, 0, 0, 0.05);
-}
-body.touch-no .component_path-element-wrapper a.label:hover span.title {
-    opacity: 1;
-    transform: translateY(0px);
-    transition: all 0.15s ease-out;
-}
-
-body.dark-mode.touch-no .component_path-element-wrapper a.label:hover {
-    background: rgba(255, 255, 255, 0.05);
-}
-
-body.touch-yes ul span {
+/* Phone like devices */
+body.touch-yes [is="component-breadcrumb"] .ul span {
     overflow-x: auto;
     overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
@@ -104,28 +87,42 @@ body.touch-yes ul span {
     -moz-box-sizing: border-box;
     white-space: nowrap;
 }
-body.touch-yes ul span::-webkit-scrollbar {
+body.touch-yes [is="component-breadcrumb"] .ul span::-webkit-scrollbar {
     height: 0px;
 }
-body.touch-yes ul span::-webkit-scrollbar-track {
+body.touch-yes [is="component-breadcrumb"] .ul span::-webkit-scrollbar-track {
     background: var(--super-light);
 }
-body.touch-yes ul span::-webkit-scrollbar-thumb {
+body.touch-yes [is="component-breadcrumb"] .ul span::-webkit-scrollbar-thumb {
     background: #d2d2d2;
     border-radius: 1px;
 }
 
-/* ANIMATION */
-.component_breadcrumb .breadcrumb-leave {
-    display: inline-block;
+/* Dark Mode */
+.dark-mode .component_breadcrumb .component_separator img {
+    filter: brightness(0.5) invert(1);
+}
+
+body.touch-no .component_path-element-wrapper a.label:hover {
+    background: var(--border);
+}
+body.touch-no .component_path-element-wrapper a.label:hover span.title {
     opacity: 1;
     transform: translateY(0px);
-}
-.component_breadcrumb .breadcrumb-leave.breadcrumb-leave-active {
-    opacity: 0;
-    transform: translateY(-10px);
     transition: all 0.15s ease-out;
 }
+body.dark-mode.touch-no .component_path-element-wrapper a.label:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+.dark-mode .component_breadcrumb .component_path-element .label {
+    color: #f1f1f1;
+    opacity: 0.7;
+}
+.dark-mode .component_breadcrumb .component_path-element a.label {
+    opacity: 1;
+}
+
+/* ANIMATION */
 .component_breadcrumb .breadcrumb-enter {
     transform: translateX(10px);
     opacity: 0;
@@ -158,12 +155,4 @@ body.touch-yes ul span::-webkit-scrollbar-thumb {
     100% {
         transform: scale(1);
     }
-}
-
-.dark-mode .component_breadcrumb .component_path-element .label {
-    color: #f1f1f1;
-    opacity: 0.7;
-}
-.dark-mode .component_breadcrumb .component_path-element a.label {
-    opacity: 1;
 }

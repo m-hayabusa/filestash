@@ -30,7 +30,7 @@ type S3Backend struct {
 	client     *s3.S3
 	config     *aws.Config
 	params     map[string]string
-	context    context.Context
+	Context    context.Context
 	threadSize int
 }
 
@@ -89,7 +89,7 @@ func (this S3Backend) Init(params map[string]string, app *App) (IBackend, error)
 		config:     config,
 		params:     params,
 		client:     s3.New(session.New(config)),
-		context:    app.Context,
+		Context:    app.Context,
 		threadSize: threadSize,
 	}
 	return backend, nil
@@ -200,7 +200,7 @@ func (this S3Backend) Ls(path string) (files []os.FileInfo, err error) {
 	}
 	client := s3.New(this.createSession(p.bucket))
 	err = client.ListObjectsV2PagesWithContext(
-		this.context,
+		this.Context,
 		&s3.ListObjectsV2Input{
 			Bucket:    aws.String(p.bucket),
 			Prefix:    aws.String(p.path),
@@ -222,6 +222,7 @@ func (this S3Backend) Ls(path string) (files []os.FileInfo, err error) {
 				files = append(files, &File{
 					FName: filepath.Base(*object.Prefix),
 					FType: "directory",
+					FTime: 0,
 				})
 			}
 			return aws.BoolValue(objs.IsTruncated)
@@ -295,7 +296,7 @@ func (this S3Backend) Rm(path string) error {
 	// CASE 2: remove a folder
 	jobChan := make(chan S3Path, this.threadSize)
 	errChan := make(chan error, this.threadSize)
-	ctx, cancel := context.WithCancel(this.context)
+	ctx, cancel := context.WithCancel(this.Context)
 	var wg sync.WaitGroup
 	for i := 1; i <= this.threadSize; i++ {
 		wg.Add(1)
@@ -316,7 +317,7 @@ func (this S3Backend) Rm(path string) error {
 		}()
 	}
 	err := client.ListObjectsV2PagesWithContext(
-		this.context,
+		this.Context,
 		&s3.ListObjectsV2Input{
 			Bucket: aws.String(p.bucket),
 			Prefix: aws.String(p.path),
@@ -387,7 +388,7 @@ func (this S3Backend) Mv(from string, to string) error {
 	// CASE 3: Rename/Move a folder
 	jobChan := make(chan []S3Path, this.threadSize)
 	errChan := make(chan error, this.threadSize)
-	ctx, cancel := context.WithCancel(this.context)
+	ctx, cancel := context.WithCancel(this.Context)
 	var wg sync.WaitGroup
 	for i := 1; i <= this.threadSize; i++ {
 		wg.Add(1)
@@ -427,7 +428,7 @@ func (this S3Backend) Mv(from string, to string) error {
 		}()
 	}
 	err := client.ListObjectsV2PagesWithContext(
-		this.context,
+		this.Context,
 		&s3.ListObjectsV2Input{
 			Bucket: aws.String(f.bucket),
 			Prefix: aws.String(f.path),
@@ -468,6 +469,7 @@ func (this S3Backend) Touch(path string) error {
 		ContentLength: aws.Int64(0),
 		Bucket:        aws.String(p.bucket),
 		Key:           aws.String(p.path),
+		ContentType:   aws.String(GetMimeType(path)),
 	}
 	if this.params["encryption_key"] != "" {
 		input.SSECustomerAlgorithm = aws.String("AES256")
@@ -484,9 +486,10 @@ func (this S3Backend) Save(path string, file io.Reader) error {
 	}
 	uploader := s3manager.NewUploader(this.createSession(p.bucket))
 	input := s3manager.UploadInput{
-		Body:   file,
-		Bucket: aws.String(p.bucket),
-		Key:    aws.String(p.path),
+		Body:        file,
+		Bucket:      aws.String(p.bucket),
+		Key:         aws.String(p.path),
+		ContentType: aws.String(GetMimeType(path)),
 	}
 	if this.params["encryption_key"] != "" {
 		input.SSECustomerAlgorithm = aws.String("AES256")

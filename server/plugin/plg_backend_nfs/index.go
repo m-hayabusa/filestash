@@ -2,17 +2,17 @@ package plg_backend_nfs
 
 import (
 	"context"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+
 	. "github.com/mickael-kerjean/filestash/server/common"
+
 	"github.com/vmware/go-nfs-client/nfs"
 	"github.com/vmware/go-nfs-client/nfs/rpc"
 	"github.com/vmware/go-nfs-client/nfs/util"
 	"github.com/vmware/go-nfs-client/nfs/xdr"
-	"io"
-	"os"
-	"os/user"
-	"path/filepath"
-	"strconv"
-	"strings"
 )
 
 type NfsShare struct {
@@ -20,6 +20,9 @@ type NfsShare struct {
 	v     *nfs.Target
 	auth  rpc.Auth
 	ctx   context.Context
+	uid   uint32
+	gid   uint32
+	gids  []uint32
 }
 
 func init() {
@@ -29,46 +32,36 @@ func init() {
 
 func (this NfsShare) Init(params map[string]string, app *App) (IBackend, error) {
 	if params["hostname"] == "" {
-		params["hostname"] = "localhost"
+		return nil, ErrNotFound
 	}
-	var (
-		uid uint32 = 1000
-		gid uint32 = 1000
-	)
-	if user, err := user.Current(); err == nil {
-		params["target"] = user.HomeDir
-		if _uid, err := strconv.Atoi(user.Uid); err == nil {
-			uid = uint32(_uid)
-		}
-		if _gid, err := strconv.Atoi(user.Gid); err == nil {
-			gid = uint32(_gid)
-		}
+	if params["machine_name"] == "" {
+		params["machine_name"] = "Filestash"
 	}
-	if mn, err := os.Hostname(); err == nil && params["machine_name"] == "" {
-		params["machine_name"] = mn
-	}
-	if params["uid"] != "" {
-		if _uid, err := strconv.Atoi(params["uid"]); err == nil {
-			uid = uint32(_uid)
-		}
-	}
-	if params["gid"] != "" {
-		if _gid, err := strconv.Atoi(params["gid"]); err == nil {
-			gid = uint32(_gid)
-		}
-	}
-	auth := rpc.NewAuthUnix(params["machine_name"], uid, gid)
+	params["username"] = params["uid"]
+	uid, gid, gids := ExtractUserInfo(params["uid"], params["gid"], params["gids"])
+	Log.Debug("plg_backend_nfs::userInfo user=%s uid=%d gid=%d gids=%+v", params["uid"], uid, gid, gids)
 
 	mount, err := nfs.DialMount(params["hostname"])
 	if err != nil {
 		return nil, err
 	}
-	authenticator := auth.Auth()
-	v, err := mount.Mount(params["target"], authenticator)
+	auth := NewAuthUnix(params["machine_name"], uid, gid, gids, params["gids"])
+	v, err := mount.Mount(
+		params["target"],
+		auth,
+	)
 	if err != nil {
 		return nil, err
 	}
-	return NfsShare{mount, v, authenticator, app.Context}, nil
+	return NfsShare{mount, v, auth, app.Context, uid, gid, toGids(gids)}, nil
+}
+
+func toGids(gids []GroupLabel) []uint32 {
+	g := make([]uint32, len(gids))
+	for i, _ := range gids {
+		g[i] = gids[i].Id
+	}
+	return g
 }
 
 func (this NfsShare) LoginForm() Form {
@@ -93,28 +86,80 @@ func (this NfsShare) LoginForm() Form {
 				Name:        "advanced",
 				Type:        "enable",
 				Placeholder: "Advanced",
-				Target:      []string{"nfs_uid", "nfs_gid", "nfs_machinename"},
+				Target:      []string{"nfs_uid", "nfs_gid", "nfs_gids", "nfs_machinename", "nfs_chroot"},
 			},
 			FormElement{
 				Id:          "nfs_uid",
 				Name:        "uid",
-				Type:        "number",
-				Placeholder: "uid",
+				Type:        "text",
+				Placeholder: "UID",
 			},
 			FormElement{
 				Id:          "nfs_gid",
 				Name:        "gid",
-				Type:        "number",
-				Placeholder: "gid",
+				Type:        "text",
+				Placeholder: "GID",
+			},
+			FormElement{
+				Id:          "nfs_gids",
+				Name:        "gids",
+				Type:        "text",
+				Placeholder: "Auxiliary GIDs",
 			},
 			FormElement{
 				Id:          "nfs_machinename",
 				Name:        "machine_name",
 				Type:        "text",
-				Placeholder: "machine name",
+				Placeholder: "Machine Name",
+			},
+			FormElement{
+				Id:          "nfs_chroot",
+				Name:        "path",
+				Type:        "text",
+				Placeholder: "Chroot",
 			},
 		},
 	}
+}
+
+func (this NfsShare) Meta(path string) Metadata {
+	f, _, err := this.v.Lookup(strings.TrimSuffix(path, "/"))
+	if err != nil {
+		return Metadata{}
+	} else if f == nil {
+		return Metadata{}
+	}
+	fattr, ok := f.(*nfs.Fattr)
+	if ok == false {
+		return Metadata{}
+	}
+
+	if fattr == nil { // happen at the root
+		return Metadata{}
+	} else if isIn(fattr.UID, []uint32{this.uid}) ||
+		isIn(fattr.GID, []uint32{this.gid}) ||
+		isIn(fattr.GID, this.gids) {
+		return Metadata{}
+	}
+	return Metadata{
+		CanSee:             NewBool(false),
+		CanCreateFile:      NewBool(false),
+		CanCreateDirectory: NewBool(false),
+		CanRename:          NewBool(false),
+		CanMove:            NewBool(false),
+		CanUpload:          NewBool(false),
+		CanDelete:          NewBool(false),
+		CanShare:           NewBool(false),
+	}
+}
+
+func isIn(id uint32, list []uint32) bool {
+	for i, _ := range list {
+		if list[i] == id {
+			return true
+		}
+	}
+	return false
 }
 
 func (this NfsShare) Ls(path string) ([]os.FileInfo, error) {
@@ -131,6 +176,20 @@ func (this NfsShare) Ls(path string) ([]os.FileInfo, error) {
 		} else if dir.Attr.Attr.Type != 1 && dir.Attr.Attr.Type != 2 {
 			// don't show anything else than file and folder
 			continue
+		}
+		if len(this.gids) > 0 { // filter out what users don't have access
+			hasAccess := false
+			for _, gid := range this.gids {
+				if gid == dir.Attr.Attr.GID {
+					hasAccess = true
+				}
+			}
+			if this.gid == dir.Attr.Attr.GID {
+				hasAccess = true
+			}
+			if hasAccess == false {
+				continue
+			}
 		}
 		files = append(files, File{
 			FName: dir.FileName,

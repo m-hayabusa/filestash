@@ -10,30 +10,22 @@ package model
 import (
 	"context"
 	"fmt"
-	. "github.com/mickael-kerjean/filestash/server/common"
-	"github.com/mickael-kerjean/net/webdav"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	. "github.com/mickael-kerjean/filestash/server/common"
+	"github.com/mickael-kerjean/net/webdav"
 )
 
-const DAVCachePath = "data/cache/webdav/"
-
-var (
-	cachePath   string
-	webdavCache AppCache
-)
+var webdav_cache AppCache
 
 func init() {
-	cachePath = GetAbsolutePath(DAVCachePath) + "/"
-	os.RemoveAll(cachePath)
-	os.MkdirAll(cachePath, os.ModePerm)
-
-	webdavCache = NewQuickCache(20, 10)
-	webdavCache.OnEvict(func(filename string, _ interface{}) {
+	webdav_cache = NewQuickCache(20, 10)
+	webdav_cache.OnEvict(func(filename string, _ interface{}) {
 		os.Remove(filename)
 	})
 }
@@ -64,7 +56,7 @@ func (this WebdavFs) Mkdir(ctx context.Context, name string, perm os.FileMode) e
 }
 
 func (this *WebdavFs) OpenFile(ctx context.Context, name string, flag int, perm os.FileMode) (webdav.File, error) {
-	cachePath := fmt.Sprintf("%stmp_%s", cachePath, Hash(this.id+name, 20))
+	cachePath := filepath.Join(GetAbsolutePath(TMP_PATH), "webdav_"+Hash(this.id+name, 20))
 	fwriteFile := func() *os.File {
 		if this.req.Method == "PUT" {
 			f, err := os.OpenFile(cachePath+"_writer", os.O_WRONLY|os.O_CREATE|os.O_EXCL, os.ModePerm)
@@ -119,7 +111,7 @@ func (this *WebdavFs) Stat(ctx context.Context, name string) (os.FileInfo, error
 	this.webdavFile = &WebdavFile{
 		path:    fullname,
 		backend: this.backend,
-		cache:   fmt.Sprintf("%stmp_%s", cachePath, Hash(this.id+name, 20)),
+		cache:   filepath.Join(GetAbsolutePath(TMP_PATH), "webdav_"+Hash(this.id+name, 20)),
 	}
 	return this.webdavFile.Stat()
 }
@@ -247,7 +239,7 @@ func (this WebdavFile) pull_remote_file() *os.File {
 		if reader, err := this.backend.Cat(this.path); err == nil {
 			io.Copy(f, reader)
 			f.Close()
-			webdavCache.SetKey(this.cache+"_reader", nil)
+			webdav_cache.SetKey(this.cache+"_reader", nil)
 			reader.Close()
 			if f, err = os.OpenFile(filename, os.O_RDONLY, os.ModePerm); err == nil {
 				return f
@@ -272,7 +264,7 @@ func (this *WebdavFile) push_to_remote_if_needed() error {
 	if err == nil {
 		if err = os.Rename(this.cache+"_writer", this.cache+"_reader"); err == nil {
 			this.fwrite = nil
-			webdavCache.SetKey(this.cache+"_reader", nil)
+			webdav_cache.SetKey(this.cache+"_reader", nil)
 		}
 	}
 	f.Close()

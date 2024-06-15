@@ -2,11 +2,9 @@ package plg_video_transcoder
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/gorilla/mux"
-	. "github.com/mickael-kerjean/filestash/server/common"
-	. "github.com/mickael-kerjean/filestash/server/middleware"
 	"io"
 	"math"
 	"net/http"
@@ -15,12 +13,22 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/gorilla/mux"
+	. "github.com/mickael-kerjean/filestash/server/common"
+	. "github.com/mickael-kerjean/filestash/server/middleware"
 )
 
 const (
-	HLS_SEGMENT_LENGTH = 30
+	HLS_SEGMENT_LENGTH = 5
+	FPS                = 30
 	CLEAR_CACHE_AFTER  = 12
 	VideoCachePath     = "data/cache/video/"
+)
+
+var (
+	plugin_enable    func() bool
+	blacklist_format func() string
 )
 
 func init() {
@@ -32,7 +40,7 @@ func init() {
 	if _, err := exec.LookPath("ffprobe"); err == nil {
 		ffprobeIsInstalled = true
 	}
-	plugin_enable := func() bool {
+	plugin_enable = func() bool {
 		return Config.Get("features.video.enable_transcoder").Schema(func(f *FormElement) *FormElement {
 			if f == nil {
 				f = &FormElement{}
@@ -48,8 +56,7 @@ func init() {
 			return f
 		}).Bool()
 	}
-
-	blacklist_format := func() string {
+	blacklist_format = func() string {
 		return Config.Get("features.video.blacklist_format").Schema(func(f *FormElement) *FormElement {
 			if f == nil {
 				f = &FormElement{}
@@ -65,50 +72,52 @@ func init() {
 			return f
 		}).String()
 	}
-	blacklist_format()
 
-	if plugin_enable() == false {
-		return
-	} else if ffmpegIsInstalled == false {
-		Log.Warning("[plugin video transcoder] ffmpeg needs to be installed")
-		return
-	} else if ffprobeIsInstalled == false {
-		Log.Warning("[plugin video transcoder] ffprobe needs to be installed")
-		return
-	}
+	Hooks.Register.Onload(func() {
+		blacklist_format()
+		if plugin_enable() == false {
+			return
+		} else if ffmpegIsInstalled == false {
+			Log.Warning("[plugin video transcoder] ffmpeg needs to be installed")
+			return
+		} else if ffprobeIsInstalled == false {
+			Log.Warning("[plugin video transcoder] ffprobe needs to be installed")
+			return
+		}
 
-	cachePath := GetAbsolutePath(VideoCachePath)
-	os.RemoveAll(cachePath)
-	os.MkdirAll(cachePath, os.ModePerm)
+		cachePath := GetAbsolutePath(VideoCachePath)
+		os.RemoveAll(cachePath)
+		os.MkdirAll(cachePath, os.ModePerm)
 
-	Hooks.Register.ProcessFileContentBeforeSend(hls_playlist)
-	Hooks.Register.HttpEndpoint(func(r *mux.Router, app *App) error {
-		r.PathPrefix("/hls/hls_{segment}.ts").Handler(NewMiddlewareChain(
-			hls_transcode,
-			[]Middleware{SecureHeaders},
-			*app,
-		)).Methods("GET")
-		return nil
-	})
-
-	Hooks.Register.HttpEndpoint(func(r *mux.Router, app *App) error {
-		r.HandleFunc(OverrideVideoSourceMapper, func(res http.ResponseWriter, req *http.Request) {
-			res.Header().Set("Content-Type", GetMimeType(req.URL.String()))
-			res.Write([]byte(`window.overrides["video-map-sources"] = function(sources){`))
-			res.Write([]byte(`    return sources.map(function(source){`))
-
-			blacklists := strings.Split(blacklist_format(), ",")
-			for i := 0; i < len(blacklists); i++ {
-				blacklists[i] = strings.TrimSpace(blacklists[i])
-				res.Write([]byte(fmt.Sprintf(`if(source.type == "%s"){ return source; } `, GetMimeType("."+blacklists[i]))))
-			}
-			res.Write([]byte(`        source.src = source.src + "&transcode=hls";`))
-			res.Write([]byte(`        source.type = "application/x-mpegURL";`))
-			res.Write([]byte(`        return source;`))
-			res.Write([]byte(`    })`))
-			res.Write([]byte(`}`))
+		Hooks.Register.ProcessFileContentBeforeSend(hls_playlist)
+		Hooks.Register.HttpEndpoint(func(r *mux.Router, app *App) error {
+			r.PathPrefix("/hls/hls_{segment}.ts").Handler(NewMiddlewareChain(
+				hls_transcode,
+				[]Middleware{SecureHeaders},
+				*app,
+			)).Methods("GET")
+			return nil
 		})
-		return nil
+
+		Hooks.Register.HttpEndpoint(func(r *mux.Router, app *App) error {
+			r.HandleFunc(OverrideVideoSourceMapper, func(res http.ResponseWriter, req *http.Request) {
+				res.Header().Set("Content-Type", GetMimeType(req.URL.String()))
+				res.Write([]byte(`window.overrides["video-map-sources"] = function(sources){`))
+				res.Write([]byte(`    return sources.map(function(source){`))
+
+				blacklists := strings.Split(blacklist_format(), ",")
+				for i := 0; i < len(blacklists); i++ {
+					blacklists[i] = strings.TrimSpace(blacklists[i])
+					res.Write([]byte(fmt.Sprintf(`if(source.type == "%s"){ return source; } `, GetMimeType("."+blacklists[i]))))
+				}
+				res.Write([]byte(`        source.src = source.src + "&transcode=hls";`))
+				res.Write([]byte(`        source.type = "application/x-mpegURL";`))
+				res.Write([]byte(`        return source;`))
+				res.Write([]byte(`    })`))
+				res.Write([]byte(`}`))
+			})
+			return nil
+		})
 	})
 }
 
@@ -122,7 +131,7 @@ func hls_playlist(reader io.ReadCloser, ctx *App, res *http.ResponseWriter, req 
 		return reader, nil
 	}
 
-	cacheName := "vid_" + GenerateID(ctx) + "_" + QuickHash(path, 10) + ".dat"
+	cacheName := "vid_" + GenerateID(ctx.Session) + "_" + QuickHash(path, 10) + ".dat"
 	cachePath := GetAbsolutePath(
 		VideoCachePath,
 		cacheName,
@@ -180,7 +189,7 @@ func hls_transcode(ctx *App, res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	cmd := exec.Command("ffmpeg", []string{
+	cmd := exec.CommandContext(req.Context(), "ffmpeg", []string{
 		"-timelimit", "30",
 		"-ss", fmt.Sprintf("%d.00", startTime),
 		"-i", cachePath,
@@ -210,12 +219,12 @@ func hls_transcode(ctx *App, res http.ResponseWriter, req *http.Request) {
 		"pipe:out%03d.ts",
 	}...)
 
-	var str bytes.Buffer
+	var buffer bytes.Buffer
 	cmd.Stdout = res
-	cmd.Stderr = &str
+	cmd.Stderr = &buffer
 	err = cmd.Run()
 	if err != nil {
-		Log.Error("plg_video_transcoder::ffmpeg::run '%s' - %s", err.Error(), str.String())
+		Log.Error("plg_video_transcoder::ffmpeg::run '%s' - %s", err.Error(), base64.StdEncoding.EncodeToString(buffer.Bytes()))
 	}
 }
 

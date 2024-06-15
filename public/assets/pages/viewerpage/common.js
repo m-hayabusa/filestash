@@ -16,7 +16,7 @@ export function getFile$() {
 export function saveFile$() {
     return rxjs.pipe(
         rxjs.delay(2000),
-        rxjs.tap((content) => console.log("SAVED", content)),
+        rxjs.tap((content) => console.log("SAVED")),
     );
 }
 
@@ -25,7 +25,7 @@ export function getFilename() {
 }
 
 export function getDownloadUrl() {
-    return "/api/files/cat?path=" + getCurrentPath().replace(/%23/g, "#");
+    return "/api/files/cat?path=" + getCurrentPath().replace(/%23/g, "#") + location.hash;
 }
 
 export function getCurrentPath() {
@@ -36,6 +36,6 @@ export function getCurrentPath() {
 //     return encodeURIComponent(decodeURIComponent(path.replace(/%/g, "%25")));
 // }
 
-function appendShareToUrl() {
-    // TODO
-}
+// function appendShareToUrl() {
+//     // TODO
+// }

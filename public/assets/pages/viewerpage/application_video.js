@@ -1,14 +1,26 @@
 import { createElement } from "../../lib/skeleton/index.js";
 import rxjs, { effect } from "../../lib/rx.js";
-import { loadCSS } from "../../helpers/loader.js";
+import { animate, slideYIn } from "../../lib/animate.js";
+import { loadCSS, loadJS } from "../../helpers/loader.js";
 import { qs } from "../../lib/dom.js";
+import { settings_get, settings_put } from "../../lib/settings.js";
+import assert from "../../lib/assert.js";
+
 import Hls from "../../lib/vendor/hlsjs/hls.js";
 
 import ctrlError from "../ctrl_error.js";
 
-import { getDownloadUrl } from "./common.js";
+import { transition, getDownloadUrl } from "./common.js";
+import { formatTimecode } from "./common_player.js";
+import { ICON } from "./common_icon.js";
+// import { menubarDownload, buildMenubar } from "./common_menubar.js";
+// import { render as renderMenubar } from "../../components/menubar.js";
 
-import "../../components/menubar.js";
+import "../../components/icon.js";
+
+const STATUS_PLAYING = "PLAYING";
+const STATUS_PAUSED = "PAUSED";
+const STATUS_BUFFERING = "BUFFERING";
 
 export default function(render, { mime }) {
     if (!Hls.isSupported()) {
@@ -24,21 +36,36 @@ export default function(render, { mime }) {
                         <div class="video_wrapper" style="max-height: 819px;">
                             <video></video>
                         </div>
-                        <div class="videoplayer_control no-select">
+                        <div class="loader no-select">
+                            <component-icon name="loading"></component-icon>
+                        </div>
+                        <div class="videoplayer_control no-select hidden">
                             <div class="progress">
-                                <div class="progress-buffer" style="left: 0.0155149%; width: 4.58182%;"></div>
+                                <div data-bind="progress-buffer">
+                                   <div class="progress-buffer" style="left: 0%; width: 0%;"></div>
+                                </div>
                                 <div class="progress-active" style="width: 0%;">
                                     <div class="thumb"></div>
                                 </div>
                                 <div class="progress-placeholder"></div>
                             </div>
-                            <img class="component_icon" draggable="false" src="data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgMjQgMjQiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzZmNmY2ZiIgc3Ryb2tlLXdpZHRoPSIyLjEiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiAgPHBhdGggZD0iTSA4LjkyODE3MjQsMi41OTk4MDI5IEMgOC4yMjE2MTQ5LDIuMTUzMjg3MyA3LjA3MjExNDMsMi4zOTIwOTE4IDcuMDcxODI3NywzLjQwMDE5NzEgbCAtMC4wMDQ4OSwxNy4yMDUwNDU5IGMgLTIuODg5ZS00LDEuMDE1NzE1IDEuMjEyMTk3OSwxLjE2MDM3MiAxLjg2NjEzMDcsMC43ODk1MTMgQyAyMy45NzU3NCw4LjcyODk4NTYgMjMuOTMwMTUyLDE0LjEwNDQ2MyA4LjkyODE1ODQsMi41OTk4MDI5IFoiIC8+Cjwvc3ZnPgo=" alt="play">
-                            <img class="component_icon" draggable="false" src="data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgMjQgMjQiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzZmNmY2ZiIgc3Ryb2tlLXdpZHRoPSIyIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgogIDxwYXRoIGQ9Im0gMTYuMzUwMjI1LDguMTkzNzg3IGMgMS40NDk2MjYsMS45MzM1NTkgMS40NDk2MjYsNS42Nzg4ODQgMCw3LjYxMjQ0NiIgLz4KICA8cGF0aCBkPSJNIDEuMTI1MzM1NiwxNS4yMTc4OTcgViA4Ljc4MTAzMjggYyAwLC0wLjYyNDIyMDUgMC40ODcxOTY3LC0xLjEzMDk5MTcgMS4wODc0OTIzLC0xLjEzMDk5MTcgSCA2LjExMjU3NDggQSAxLjA2NTc0MjIsMS4wNjU3NDIyIDAgMCAwIDYuODgxNDMxOCw3LjMxODM1NjIgTCAxMC4xNDM5MDksMy42MzM5MzI4IGMgMC42ODUxMiwtMC43MTMzOTUgMS44NTYzNDUsLTAuMjA3NzExMSAxLjg1NjM0NSwwLjgwMDM5NDIgdiAxNS4xMzEzNjggYyAwLDEuMDE1NzE1IC0xLjE4NTM2MiwxLjUxNzA0NSAtMS44NjYxMzEsMC43ODk1MTMgTCA2Ljg4MjUxOSwxNi42OTE0NSBBIDEuMDY1NzQyMiwxLjA2NTc0MjIgMCAwIDAgNi4xMDM4NzQ4LDE2LjM0OTk3NSBIIDIuMjEyODI3OSBjIC0wLjYwMDI5NTYsMCAtMS4wODc0OTIzLC0wLjUwNjc2OCAtMS4wODc0OTIzLC0xLjEzMjA3OCB6IiAvPgo8L3N2Zz4K" alt="volume_low">
+                            <img class="component_icon" draggable="false" src="${ICON.PLAY}" alt="play">
+                            <img class="component_icon hidden" draggable="false" src="${ICON.PAUSE}" alt="pause">
+                            <component-icon name="loading" class="hidden"></component-icon>
+
+                            <img class="component_icon hidden" draggable="false" src="${ICON.VOLUME_MUTE}" alt="volume_mute">
+                            <img class="component_icon hidden" draggable="false" src="${ICON.VOLUME_LOW}" alt="volume_low">
+                            <img class="component_icon hidden" draggable="false" src="${ICON.VOLUME_NORMAL}" alt="volume">
+
                             <input type="range" min="0" max="100" value="13">
-                            <span class="timecode">00:00&nbsp; / &nbsp;02:17</span>
+                            <span class="timecode">
+                                <div class="current"></div>
+                                <div class="hint hidden"></div>
+                            </span>
                         </div>
                     </div>
                 </span>
+
                 <div class="component_pager">
                     <div class="wrapper no-select">
                         <span>
@@ -62,37 +89,284 @@ export default function(render, { mime }) {
         </div>
     `);
     render($page);
+    transition(qs($page, ".video_container"));
 
     const $video = qs($page, "video");
+    const $control = {
+        play: qs($page, `.videoplayer_control [alt="play"]`),
+        pause: qs($page, `.videoplayer_control [alt="pause"]`),
+        loading: qs($page, `.videoplayer_control component-icon[name="loading"]`),
+    };
+    const $volume = {
+        range: qs($page, `input[type="range"]`),
+        icon_mute: qs($page, `img[alt="volume_mute"]`),
+        icon_low: qs($page, `img[alt="volume_low"]`),
+        icon_normal: qs($page, `img[alt="volume"]`),
+    };
+    const setVolume = (volume) => {
+        settings_put("volume", volume);
+        $video.volume = volume / 100;
+        $volume.range.value = volume;
+        if (volume === 0) {
+            $volume.icon_mute.classList.remove("hidden");
+            $volume.icon_low.classList.add("hidden");
+            $volume.icon_normal.classList.add("hidden");
+        } else if (volume < 50) {
+            $volume.icon_mute.classList.add("hidden");
+            $volume.icon_low.classList.remove("hidden");
+            $volume.icon_normal.classList.add("hidden");
+        } else {
+            $volume.icon_mute.classList.add("hidden");
+            $volume.icon_low.classList.add("hidden");
+            $volume.icon_normal.classList.remove("hidden");
+        }
+    };
+    const setStatus = (status) => {
+        switch (status) {
+        case "PLAYING":
+            $control.play.classList.add("hidden");
+            $control.pause.classList.remove("hidden");
+            $control.loading.classList.add("hidden");
+            $video.play();
+            break;
+        case "PAUSED":
+            $control.play.classList.remove("hidden");
+            $control.pause.classList.add("hidden");
+            $control.loading.classList.add("hidden");
+            $video.pause();
+            break;
+        case "BUFFERING":
+            $control.play.classList.add("hidden");
+            $control.pause.classList.add("hidden");
+            $control.loading.classList.remove("hidden");
+            break;
+        default:
+            assert.fail(status);
+        }
+    };
+    const setSeek = (newTime, shouldSet = false) => {
+        if (shouldSet) $video.currentTime = newTime;
+        const width = 100 * (newTime / $video.duration);
+        qs($page, ".progress .progress-active").style.width = `${width}%`;
+        if (!isNaN($video.duration)) {
+            qs($page, ".timecode .current").textContent = formatTimecode($video.currentTime) + " / " + formatTimecode($video.duration);
+        }
+    };
 
-    const hls = new Hls();
-    hls.loadSource(getDownloadUrl(), mime);
-    hls.attachMedia($video);
-    hls.on(Hls.Events.MEDIA_ATTACHED, function () {
-      console.log('video and hls.js are now bound together !');
-    });
-    hls.on(Hls.Events.MANIFEST_PARSED, function (event, data) {
-      console.log(
-        'manifest loaded, found ' + data.levels.length + ' quality level',
-      );
-    });
+    // feature1: setup the dom
+    const setup$ = rxjs.of(null).pipe(
+        rxjs.tap(() => {
+            const hls = new Hls();
+            const sources = window.overrides["video-map-sources"]([{
+                src: getDownloadUrl(),
+                type: mime,
+            }]);
+            for (let i=0; i<sources.length; i++) {
+                hls.loadSource(sources[i].src, sources[i].type);
+            }
+            hls.attachMedia($video);
+        }),
+        rxjs.mergeMap(() => rxjs.fromEvent($video, "loadeddata")),
+        // rxjs.tap(() => renderMenubar(buildMenubar(
+        //     menubarDownload(),
+        // ))),
+        rxjs.mergeMap(() => {
+            const $loader = qs($page, ".loader");
+            $loader.replaceChildren(createElement(`<img style="height:170px;cursor:pointer;filter:brightness(0.5) invert(1);" src="${ICON.PLAY}" />`));
+            animate($loader, {
+                time: 150,
+                keyframes: [
+                    { transform: "scale(0.7)" },
+                    { transform: "scale(1)" },
+                ],
+            });
+            setSeek(0);
+            return rxjs.fromEvent($loader, "click").pipe(rxjs.mapTo($loader));
+        }),
+        rxjs.tap(($loader) => {
+            $loader.classList.add("hidden");
+            const $control = qs($page, ".videoplayer_control");
+            $control.classList.remove("hidden");
+            animate($control, { time: 300, keyframes: slideYIn(5) });
+            setStatus(STATUS_PLAYING);
+        }),
+        rxjs.share(),
+    );
+    effect(setup$);
+    effect(setup$.pipe(rxjs.mergeMap(() => rxjs.fromEvent($video, "error").pipe(rxjs.tap(() => {
+        // console.error(err);
+        // notify.send(t("Not supported"), "error");
+        // setIsPlaying(false);
+        // setIsLoading(false);
+    })))));
 
-    effect(rxjs.fromEvent($video, "loadeddata").pipe())
-    effect(rxjs.fromEvent($video, "ended").pipe())
-    effect(rxjs.merge(
-        // rxjs.from(qsa($page, "source")).pipe(rxjs.mergeMap(
-        // ))
-        rxjs.fromEvent($video, "error")
-    ).pipe());
-    effect(rxjs.fromEvent($video, "waiting").pipe());
-    effect(rxjs.fromEvent($video, "playing").pipe());
-    effect(rxjs.fromEvent(document.body, "keypress").pipe(
+    // feature2: player control - volume
+    effect(setup$.pipe(
+        rxjs.switchMap(() => rxjs.fromEvent($volume.range, "input").pipe(rxjs.map((e) => e.target.value))),
+        rxjs.startWith(settings_get("volume") === null ? 80 : settings_get("volume")),
+        rxjs.tap((volume) => setVolume(parseInt(volume))),
+    ));
+
+    // feature3: player control - play/pause
+    effect(setup$.pipe(
+        rxjs.mergeMap(() => rxjs.merge(
+            rxjs.fromEvent($control.play, "click").pipe(rxjs.mapTo(STATUS_PLAYING)),
+            rxjs.fromEvent($control.pause, "click").pipe(rxjs.mapTo(STATUS_PAUSED)),
+            rxjs.fromEvent($video, "ended").pipe(rxjs.mapTo(STATUS_PAUSED)),
+            rxjs.fromEvent($video, "waiting").pipe(rxjs.mapTo(STATUS_BUFFERING)),
+            rxjs.fromEvent($video, "playing").pipe(rxjs.mapTo(STATUS_PLAYING)),
+        )),
+        rxjs.debounceTime(50),
+        rxjs.tap((status) => setStatus(status)),
+    ));
+
+    // feature4: hint
+    const $hint = qs($page, `.hint`);
+    effect(setup$.pipe(
+        rxjs.switchMap(() => rxjs.fromEvent(qs($page, ".progress"), "mousemove")),
+        rxjs.map((e) => {
+            const rec = e.target.getBoundingClientRect();
+            const width = e.clientX - rec.x;
+            const time = $video.duration * width / rec.width;
+            let posX = width;
+            posX = Math.max(posX, 30);
+            posX = Math.min(posX, e.target.clientWidth - 30);
+            return { x: `${posX}px`, time };
+        }),
+        rxjs.tap(({ x, time }) => {
+            $hint.classList.remove("hidden");
+            $hint.style.left = x;
+            $hint.textContent = formatTimecode(time);
+        }),
+    ));
+    effect(setup$.pipe(
+        rxjs.switchMap(() => rxjs.fromEvent(qs($page, ".progress"), "mouseleave")),
+        rxjs.tap(() => $hint.classList.add("hidden")),
+    ));
+
+    // feature5: player control - seek
+    effect(setup$.pipe(
+        rxjs.switchMap(() => rxjs.fromEvent(qs($page, ".progress"), "click").pipe(
+            rxjs.map((e) => { // TODO: use onClick instead?
+                let $progress = e.target;
+                if (e.target.classList.contains("progress") === false) {
+                    $progress = e.target.parentElement;
+                }
+                const rec = $progress.getBoundingClientRect();
+                return (e.clientX - rec.x) / rec.width;
+            }),
+            rxjs.tap((n) => {
+                if (n < 2/100) {
+                    setStatus(STATUS_PAUSED);
+                    n = 0;
+                }
+                setSeek(n * $video.duration, true);
+            }),
+        )),
+    ));
+
+    // feature6: player control - keyboard shortcut
+    effect(setup$.pipe(
+        rxjs.switchMap(() => rxjs.fromEvent(document, "keydown").pipe(rxjs.map((e) => e.code))),
+        rxjs.tap((code) => {
+            switch (code) {
+            case "Space":
+            case "KeyK":
+                setStatus($video.paused ? STATUS_PLAYING : STATUS_PAUSED);
+                break;
+            case "KeyM":
+                setVolume($video.volume > 0 ? 0 : settings_get("volume"));
+                break;
+            case "ArrowUp":
+                setVolume(Math.min($video.volume*100 + 10, 100));
+                break;
+            case "ArrowDown":
+                setVolume(Math.max($video.volume*100 - 10, 0));
+                break;
+            case "KeyL":
+                setSeek(Math.min($video.duration, $video.currentTime + 10), true);
+                break;
+            case "KeyJ":
+                setSeek(Math.max(0, $video.currentTime - 10), true);
+                break;
+            case "KeyF":
+                // TODO
+                break;
+            case "Digit0":
+                setSeek(0, true);
+                break;
+            case "Digit1":
+                setSeek($video.duration / 10, true);
+                break;
+            case "Digit2":
+                setSeek($video.duration * 2 / 10, true);
+                break;
+            case "Digit3":
+                setSeek($video.duration * 3 / 10, true);
+                break;
+            case "Digit4":
+                setSeek($video.duration * 4 / 10, true);
+                break;
+            case "Digit5":
+                setSeek($video.duration * 5 / 10, true);
+                break;
+            case "Digit6":
+                setSeek($video.duration * 6 / 10, true);
+                break;
+            case "Digit7":
+                setSeek($video.duration * 7 / 10, true);
+                break;
+            case "Digit8":
+                setSeek($video.duration * 8 / 10, true);
+                break;
+            case "Digit9":
+                setSeek($video.duration * 9 / 10, true);
+                break;
+            }
+        }),
+    ));
+
+    // feature7: render the progress bar
+    effect(setup$.pipe(
+        rxjs.mergeMap(() => rxjs.fromEvent($video, "timeupdate")),
+        rxjs.tap(() => setSeek($video.currentTime)),
+    ));
+
+    // feature8: render loading buffer
+    effect(setup$.pipe(
+        rxjs.mergeMap(() => rxjs.fromEvent($video, "timeupdate")),
+        rxjs.tap(() => {
+            const calcWidth = (i) => {
+                return ($video.buffered.end(i) - $video.buffered.start(i)) / $video.duration * 100;
+            };
+            const calcLeft = (i) => {
+                return $video.buffered.start(i) / $video.duration * 100;
+            };
+            const $container = qs($page, `[data-bind="progress-buffer"]`);
+            if ($video.buffered.length !== $container.children.length) {
+                $container.innerHTML = "";
+                const $fragment = document.createDocumentFragment();
+                Array.apply(null, { length: $video.buffered.length })
+                    .map(() => $fragment.appendChild(createElement(`
+                        <div className="progress-buffer" style=""></div>
+                    `)));
+                $container.appendChild($fragment);
+            }
+            for (let i=0; i<$video.buffered.length; i++) {
+                $container.children[i].style.left = calcLeft(i) + "%";
+                $container.children[i].style.width = calcWidth(i) + "%";
+            }
+        }),
     ));
 }
 
 export function init() {
+    if (!window.overrides) window.overrides = {};
     return Promise.all([
         loadCSS(import.meta.url, "./application_video.css"),
         loadCSS(import.meta.url, "./component_pager.css"),
-    ]);
+        loadJS(import.meta.url, "/overrides/video-transcoder.js"),
+    ]).then(async() => {
+        if (typeof window.overrides["video-map-sources"] !== "function") window.overrides["video-map-sources"] = (s) => (s);
+    });
 }

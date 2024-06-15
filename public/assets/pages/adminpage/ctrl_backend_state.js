@@ -7,12 +7,15 @@ import { formObjToJSON$ } from "./helper_form.js";
 
 export { getBackends as getBackendAvailable } from "./model_backend.js";
 
-const backendsEnabled$ = new rxjs.BehaviorSubject([]);
+const backendsEnabled$ = new rxjs.BehaviorSubject();
 
 export async function initStorage() {
     return await getConfig().pipe(
         rxjs.map(({ connections }) => connections),
-        rxjs.tap((connections) => backendsEnabled$.next(Array.isArray(connections) ? connections : [])),
+        rxjs.tap((connections) => {
+            if (backendsEnabled$.value !== undefined) return;
+            backendsEnabled$.next(Array.isArray(connections) ? connections : []);
+        }),
     ).toPromise();
 }
 
@@ -21,32 +24,40 @@ export function getBackendEnabled() {
 }
 
 export function addBackendEnabled(type) {
-    const existingLabels = new Set();
-    backendsEnabled$.value.forEach((obj) => {
-        existingLabels.add(obj.label.toLowerCase());
-    });
+    return backendsEnabled$.pipe(
+        rxjs.first(),
+        rxjs.map((backends) => {
+            const existingLabels = new Set();
+            backends.forEach((obj) => {
+                existingLabels.add(obj.label.toLowerCase());
+            });
 
-    let label = ""; let i = 1;
-    while (true) {
-        label = type + (i === 1 ? "" : ` ${i}`);
-        if (existingLabels.has(label) === false) break;
-        i += 1;
-    }
+            let label = ""; let i = 1;
+            while (true) {
+                label = type + (i === 1 ? "" : ` ${i}`);
+                if (existingLabels.has(label) === false) break;
+                i += 1;
+            }
 
-    const b = backendsEnabled$.value.concat({ type, label });
-    backendsEnabled$.next(b);
-    return b;
+            const b = backends.concat({ type, label });
+            backendsEnabled$.next(b);
+            return b;
+        }),
+    );
 }
 
 export function removeBackendEnabled(labelToRemove) {
-    const b = backendsEnabled$.value.filter(({ label }) => {
-        return label !== labelToRemove;
-    });
-    backendsEnabled$.next(b);
-    return b;
+    return backendsEnabled$.pipe(
+        rxjs.first(),
+        rxjs.map((backends) => {
+            const b = backends.filter(({ label }) => label !== labelToRemove);
+            backendsEnabled$.next(b);
+            return b;
+        }),
+    );
 }
 
-const middlewareEnabled$ = new rxjs.BehaviorSubject(null);
+const middlewareEnabled$ = new rxjs.ReplaySubject(1);
 
 export async function initMiddleware() {
     return await getAdminConfig().pipe(
@@ -64,9 +75,14 @@ export function getMiddlewareEnabled() {
 }
 
 export function toggleMiddleware(type) {
-    const newValue = middlewareEnabled$.value === type ? null : type;
-    middlewareEnabled$.next(newValue);
-    return newValue;
+    return middlewareEnabled$.pipe(
+        rxjs.first(),
+        rxjs.map((oldValue) => {
+            const newValue = oldValue === type ? null : type;
+            middlewareEnabled$.next(newValue);
+            return newValue;
+        }),
+    );
 }
 
 export function getState() {
@@ -75,7 +91,7 @@ export function getState() {
         formObjToJSON$(),
         rxjs.map((config) => { // connections
             const connections = [];
-            const formData = new FormData(qs(document.body, "[data-bind=\"backend-enabled\"]"));
+            const formData = new FormData(qs(document.body, `[data-bind="backend-enabled"]`));
             for (const [type, label] of formData.entries()) {
                 connections.push({ type, label });
             }
@@ -84,7 +100,7 @@ export function getState() {
         }),
         rxjs.map((config) => { // middleware
             const authType = document
-                .querySelector("[data-bind=\"authentication_middleware\"] [is=\"box-item\"].active")
+                .querySelector(`[data-bind="authentication_middleware"] [is="box-item"].active`)
                 ?.getAttribute("data-label");
 
             config.middleware = {
@@ -93,7 +109,7 @@ export function getState() {
             };
             if (!authType) return config;
 
-            const $formIDP = document.querySelector("[data-bind=\"idp\"]");
+            const $formIDP = document.querySelector(`[data-bind="idp"]`);
             if (!($formIDP instanceof window.HTMLFormElement)) throw new ApplicationError("INTERNAL_ERROR", "assumption failed: idp isn't a form");
             let formValues = [...new FormData($formIDP)];
             config.middleware.identity_provider = {
@@ -113,7 +129,7 @@ export function getState() {
                 ),
             };
 
-            const $formAM = document.querySelector("[data-bind=\"attribute-mapping\"]");
+            const $formAM = document.querySelector(`[data-bind="attribute-mapping"]`);
             if (!($formAM instanceof window.HTMLFormElement)) throw new ApplicationError("INTERNAL_ERROR", "assumption failed: attribute mapping isn't a form");
             formValues = [...new FormData($formAM)];
             config.middleware.attribute_mapping = {

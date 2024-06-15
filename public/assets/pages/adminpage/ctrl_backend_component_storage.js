@@ -1,12 +1,12 @@
-import { createElement, createRender } from "../../lib/skeleton/index.js";
-import rxjs, { effect, applyMutations, onClick } from "../../lib/rx.js";
+import { createElement } from "../../lib/skeleton/index.js";
+import rxjs, { effect, applyMutations, applyMutation, onClick } from "../../lib/rx.js";
 import { createForm } from "../../lib/form.js";
 import { qs, qsa } from "../../lib/dom.js";
 import { formTmpl } from "../../components/form.js";
 import { generateSkeleton } from "../../components/skeleton.js";
 import ctrlError from "../ctrl_error.js";
 
-import { initStorage, getState, getBackendAvailable, getBackendEnabled, addBackendEnabled, removeBackendEnabled } from "./ctrl_backend_state.js";
+import { getState, getBackendAvailable, getBackendEnabled, addBackendEnabled, removeBackendEnabled } from "./ctrl_backend_state.js";
 import { save as saveConfig } from "./model_config.js";
 
 import "./component_box-item.js";
@@ -22,15 +22,17 @@ export default async function(render) {
         </div>
     `);
     render($page);
-    await initStorage();
+
+    const $available = qs($page, `[data-bind="backend-available"]`);
+    const $enabled = qs($page, `[data-bind="backend-enabled"]`);
 
     // feature: setup the buttons
     const init$ = getBackendAvailable().pipe(
-        rxjs.tap(() => qs($page, "[data-bind=\"backend-available\"]").innerHTML = ""),
+        rxjs.tap(() => $available.innerHTML = ""),
         rxjs.mergeMap((specs) => Promise.all(Object.keys(specs).map((label) => createElement(`
             <div is="box-item" data-label="${label}"></div>
         `)))),
-        applyMutations(qs($page, "[data-bind=\"backend-available\"]"), "appendChild"),
+        applyMutations($available, "appendChild"),
         rxjs.share(),
     );
     effect(init$);
@@ -56,7 +58,7 @@ export default async function(render) {
     effect(init$.pipe(
         rxjs.mergeMap(($nodes) => $nodes),
         rxjs.mergeMap(($node) => onClick($node)),
-        rxjs.map(($node) => addBackendEnabled($node.getAttribute("data-label"))),
+        rxjs.mergeMap(($node) => addBackendEnabled($node.getAttribute("data-label"))),
         saveConnections(),
     ));
 
@@ -87,16 +89,20 @@ export default async function(render) {
                 return $fieldset;
             },
         }))))),
-        rxjs.map((nodeList) => {
-            if (nodeList.length === 0) { return [createElement(`
+        rxjs.tap(() => $enabled.innerHTML = ""),
+        rxjs.mergeMap((nodeList) => {
+            if (nodeList.length === 0) return rxjs.of(createElement(`
                 <div class="alert">
                     You need to select at least 1 storage backend
                 </div>
-            `)]; }
-            return nodeList;
+            `)).pipe(
+                applyMutation($enabled, "appendChild"),
+                rxjs.mergeMap(() => rxjs.EMPTY),
+            );
+            return rxjs.of(nodeList).pipe(
+                applyMutations($enabled, "appendChild"),
+            );
         }),
-        rxjs.tap(() => qs($page, "[data-bind=\"backend-enabled\"]").innerHTML = ""),
-        applyMutations(qs($page, "[data-bind=\"backend-enabled\"]"), "appendChild"),
         rxjs.share(),
     );
     effect(setupForm$);
@@ -106,7 +112,7 @@ export default async function(render) {
         rxjs.mergeMap(($nodes) => $nodes),
         rxjs.mergeMap(($node) => onClick($node.querySelector(".icons"))),
         rxjs.map(($node) => qs($node.parentElement, "input").value),
-        rxjs.map((label) => removeBackendEnabled(label)),
+        rxjs.mergeMap((label) => removeBackendEnabled(label)),
         saveConnections(),
     ));
 

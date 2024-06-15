@@ -3,7 +3,7 @@ import rxjs, { effect, applyMutation, onClick } from "../../lib/rx.js";
 import { animate, slideXIn, opacityOut } from "../../lib/animate.js";
 import { qs, qsa } from "../../lib/dom.js";
 import { loadCSS } from "../../helpers/loader.js";
-import { createForm, mutateForm } from "../../lib/form.js";
+import { createForm } from "../../lib/form.js";
 import { formTmpl } from "../../components/form.js";
 import ctrlError from "../ctrl_error.js";
 
@@ -18,21 +18,21 @@ export default function(render) {
     const $page = createElement(`
         <div class="component_formviewer">
             <component-menubar></component-menubar>
-            <div class="formviewer_container">
+            <div class="formviewer_container hidden">
                 <form class="sticky box"></form>
             </div>
-            <button is="component-fab"></button>
+            <button is="component-fab" data-options="download"></button>
         </div>
     `);
     render($page);
-    transition(qs($page, ".formviewer_container"));
 
-    const file$ = new rxjs.ReplaySubject(1);
+    const $container = qs($page, ".formviewer_container");
     const $fab = qs($page, `[is="component-fab"]`);
     const formState = () => [...new FormData(qs($page, "form"))].reduce((acc, el) => {
         acc[el[0]] = el[1];
         return acc;
     }, {});
+    const file$ = new rxjs.ReplaySubject(1);
 
     // feature1: setup the dom
     effect(getFile$().pipe(
@@ -55,6 +55,10 @@ export default function(render) {
             `),
         }))).pipe(
             applyMutation(qs($page, "form"), "replaceChildren"),
+            rxjs.tap(() => {
+                $container.classList.remove("hidden");
+                transition($container);
+            }),
             rxjs.mapTo(formSpec),
         )),
         rxjs.tap((formSpec) => file$.next(formObjToJSON(formSpec))),
@@ -73,10 +77,10 @@ export default function(render) {
         ),
     ).pipe(
         rxjs.map((originalState) => {
-            const smod = (key, value) => value ? value : undefined;
+            const smod = (key, value) => value || undefined;
             return JSON.stringify(originalState, smod) !== JSON.stringify(formState(), smod);
         }),
-        rxjs.mergeMap(async (isSaveButtonVisible) => {
+        rxjs.mergeMap(async(isSaveButtonVisible) => {
             if (isSaveButtonVisible && $fab.classList.contains("hidden")) {
                 $fab.render($ICON.SAVING);
                 $fab.classList.remove("hidden");
@@ -92,7 +96,7 @@ export default function(render) {
     // feature3: submit the form
     effect(onClick($fab).pipe(
         rxjs.tap(() => {
-            $fab.render($ICON.LOADING)
+            $fab.render($ICON.LOADING);
             $fab.disabled = true;
         }),
         rxjs.mergeMap(($fab) => rxjs.of(JSON.stringify(formState())).pipe(
